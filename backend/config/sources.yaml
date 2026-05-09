@@ -1,0 +1,306 @@
+# RSS 源清单
+# use_proxy: true 表示走代理拉取（海外源）
+sources:
+  # ── AI 与大模型 ──────────────────────────────────────────
+  - key: 36kr
+    name: 36氪
+    url: https://36kr.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: jiqizhixin
+    name: 机器之心
+    url: https://www.jiqizhixin.com/rss
+    use_proxy: false
+    enabled: true
+
+  - key: leiphone
+    name: 雷锋网
+    url: https://www.leiphone.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: syncedreview
+    name: 机器之心 Synced
+    url: https://syncedreview.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: venturebeat_ai
+    name: VentureBeat AI
+    url: https://venturebeat.com/category/ai/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: theregister_ai
+    name: The Register AI
+    url: https://www.theregister.com/software/ai_ml/headlines.atom
+    use_proxy: true
+    enabled: true
+
+  - key: techcrunch_ai
+    name: TechCrunch AI
+    url: https://techcrunch.com/category/artificial-intelligence/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: openai_blog
+    name: OpenAI Blog
+    url: https://openai.com/blog/rss/
+    use_proxy: true
+    enabled: true
+
+  - key: huggingface_blog
+    name: Hugging Face Blog
+    url: https://huggingface.co/blog/feed.xml
+    use_proxy: true
+    enabled: true
+
+  # ── 科技产业 ─────────────────────────────────────────────
+  - key: sspai
+    name: 少数派
+    url: https://sspai.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: ifanr
+    name: 爱范儿
+    url: https://www.ifanr.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: techcrunch
+    name: TechCrunch
+    url: https://techcrunch.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: theverge
+    name: The Verge
+    url: https://www.theverge.com/rss/index.xml
+    use_proxy: true
+    enabled: true
+
+  - key: wired
+    name: Wired
+    url: https://www.wired.com/feed/rss
+    use_proxy: true
+    enabled: true
+
+  - key: arstechnica
+    name: Ars Technica
+    url: https://feeds.arstechnica.com/arstechnica/index
+    use_proxy: true
+    enabled: true
+
+  # ── 政策与监管 ───────────────────────────────────────────
+  - key: xinhua_tech
+    name: 新华社科技
+    url: http://www.xinhuanet.com/tech/news_tech.xml
+    use_proxy: false
+    enabled: false
+
+  - key: caixin_tech
+    name: 财新科技
+    url: https://www.caixin.com/rss/science-tech.xml
+    use_proxy: false
+    enabled: true
+
+  - key: cls
+    name: 财联社
+    url: https://rss.cls.cn/cls
+    use_proxy: false
+    enabled: true
+
+  - key: euractiv_tech
+    name: Euractiv Digital
+    url: https://www.euractiv.com/sections/digital/feed/
+    use_proxy: true
+    enabled: true
+
+  # ── 学术研究 ─────────────────────────────────────────────
+  - key: arxiv_cs_ai
+    name: arXiv cs.AI
+    url: https://rss.arxiv.org/rss/cs.AI
+    use_proxy: true
+    enabled: true
+
+  - key: arxiv_cs_lg
+    name: arXiv cs.LG
+    url: https://rss.arxiv.org/rss/cs.LG
+    use_proxy: true
+    enabled: true
+
+  - key: deepmind_blog
+    name: DeepMind Blog
+    url: https://deepmind.google/blog/rss.xml
+    use_proxy: true
+    enabled: true
+
+  - key: mit_news_ai
+    name: MIT News AI
+    url: https://news.mit.edu/topic/mitartificial-intelligence2-rss.xml
+    use_proxy: true
+    enabled: true
+
+  # ── 商业与经济 ───────────────────────────────────────────
+  - key: huxiu
+    name: 虎嗅
+    url: https://www.huxiu.com/rss/
+    use_proxy: false
+    enabled: true
+
+  - key: thepaper
+    name: 澎湃新闻
+    url: https://feedx.net/rss/thepaper.xml
+    use_proxy: false
+    enabled: true
+
+  - key: ft_tech
+    name: Financial Times Tech
+    url: https://www.ft.com/technology?format=rss
+    use_proxy: true
+    enabled: true
+
+  - key: bloomberg_tech
+    name: Bloomberg Technology
+    url: https://feeds.bloomberg.com/technology/news.rss
+    use_proxy: true
+    enabled: true
+
+  # ── 国际时政 ─────────────────────────────────────────────
+  - key: bbc_tech
+    name: BBC Technology
+    url: https://feeds.bbci.co.uk/news/technology/rss.xml
+    use_proxy: true
+    enabled: true
+
+  - key: reuters_tech
+    name: Reuters Technology
+    url: https://feeds.reuters.com/reuters/technologyNews
+    use_proxy: true
+    enabled: false
+
+  - key: bbc_news
+    name: BBC News
+    url: https://feeds.bbci.co.uk/news/rss.xml
+    use_proxy: true
+    enabled: true
+
+  - key: aljazeera
+    name: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    use_proxy: true
+    enabled: true
+
+  - key: guardian_world
+    name: Guardian World
+    url: https://www.theguardian.com/world/rss
+    use_proxy: true
+    enabled: true
+
+  - key: npr_world
+    name: NPR World
+    url: https://feeds.npr.org/1004/rss.xml
+    use_proxy: true
+    enabled: true
+
+  # ── 芯片与硬件 ───────────────────────────────────────────
+  - key: anandtech
+    name: AnandTech
+    url: https://www.anandtech.com/rss/
+    use_proxy: true
+    enabled: true
+
+  - key: semiwiki
+    name: SemiWiki
+    url: https://semiwiki.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: eetimes
+    name: EE Times
+    url: https://www.eetimes.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: ithome
+    name: IT之家
+    url: https://www.ithome.com/rss/
+    use_proxy: false
+    enabled: true
+
+  # ── 机器人与自动化 ───────────────────────────────────────
+  - key: ieee_spectrum
+    name: IEEE Spectrum
+    url: https://spectrum.ieee.org/feeds/feed.rss
+    use_proxy: true
+    enabled: true
+
+  - key: robotics_biz
+    name: Robotics Business Review
+    url: https://www.roboticsbusinessreview.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: autocar
+    name: Autocar EV
+    url: https://www.autocar.co.uk/rss
+    use_proxy: true
+    enabled: true
+
+  # ── 网络安全 ─────────────────────────────────────────────
+  - key: krebs
+    name: Krebs on Security
+    url: https://krebsonsecurity.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: schneier
+    name: Schneier on Security
+    url: https://www.schneier.com/feed/atom/
+    use_proxy: true
+    enabled: true
+
+  - key: threatpost
+    name: Threatpost
+    url: https://threatpost.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: freebuf
+    name: FreeBuf
+    url: https://www.freebuf.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: anquanke
+    name: 安全客
+    url: https://api.anquanke.com/data/v1/rss
+    use_proxy: false
+    enabled: true
+
+  - key: sihuo
+    name: 嘶吼
+    url: https://www.4hou.com/feed
+    use_proxy: false
+    enabled: true
+
+  # ── 社会与人文 ───────────────────────────────────────────
+  - key: sciencenet
+    name: 科学网
+    url: https://blog.sciencenet.cn/rss.php
+    use_proxy: false
+    enabled: true
+
+  - key: economist_tech
+    name: The Economist Technology
+    url: https://www.economist.com/technology/rss.xml
+    use_proxy: true
+    enabled: true
+
+  - key: nature_news
+    name: Nature News
+    url: https://www.nature.com/nature.rss
+    use_proxy: true
+    enabled: true

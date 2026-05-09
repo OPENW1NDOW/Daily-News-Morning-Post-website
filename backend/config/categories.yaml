@@ -1,0 +1,41 @@
+# 板块定义
+categories:
+  - key: ai
+    name: AI 与大模型
+    description: 大语言模型、多模态、AI 产品、算法突破、开源模型
+
+  - key: tech
+    name: 科技产业
+    description: 科技公司动态、产品发布、行业竞争、投融资
+
+  - key: policy
+    name: 政策与监管
+    description: AI 法规、数据安全、政府政策、国际监管动态
+
+  - key: research
+    name: 学术研究
+    description: 论文、实验室成果、基础科学突破
+
+  - key: business
+    name: 商业与经济
+    description: 宏观经济、商业模式、企业战略、市场分析
+
+  - key: international
+    name: 国际时政
+    description: 地缘政治、国际关系、重大外交事件
+
+  - key: chip
+    name: 芯片与硬件
+    description: 半导体、GPU、CPU、硬件创新、供应链
+
+  - key: robotics
+    name: 机器人与自动化
+    description: 具身智能、工业机器人、自动驾驶
+
+  - key: security
+    name: 网络安全
+    description: 数据泄露、漏洞、攻防、隐私保护
+
+  - key: social
+    name: 社会与人文
+    description: AI 对就业、教育、伦理、社会结构的影响
