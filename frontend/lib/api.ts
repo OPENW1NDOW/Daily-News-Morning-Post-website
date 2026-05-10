@@ -21,8 +21,6 @@ export const api = {
     return request<NewsItem[]>(`/api/news?${q}`)
   },
 
-  getNewsItem: (id: number) => request<NewsItem>(`/api/news/${id}`),
-
   addFavorite: (news_item_id: number) =>
     request<{ id: number }>("/api/favorites", {
       method: "POST",

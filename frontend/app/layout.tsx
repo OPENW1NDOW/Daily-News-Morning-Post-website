@@ -17,14 +17,12 @@ const fraunces = Fraunces({
 
 const notoSansSC = Noto_Sans_SC({
   variable: "--font-noto-sans-sc",
-  subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700", "900"],
   display: "swap",
 });
 
 const notoSerifSC = Noto_Serif_SC({
   variable: "--font-noto-serif-sc",
-  subsets: ["latin"],
   weight: ["400", "500", "600", "700", "900"],
   display: "swap",
 });

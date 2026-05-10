@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { api } from "@/lib/api"
+import { todayStr } from "@/lib/utils"
 import type { NewsItem, Category, PipelineProgress } from "@/lib/types"
 import { NewsDrawer } from "@/components/NewsDrawer"
 import { CategoryTabs } from "@/components/CategoryTabs"
@@ -12,10 +13,6 @@ import { NewsSkeleton } from "@/components/NewsSkeleton"
 import { HeroCard } from "@/components/HeroCard"
 import { SectionBlock } from "@/components/SectionBlock"
 import { SamoyedAvatar } from "@/components/SamoyedAvatar"
-
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
-}
 
 function formatDateZH(d: string) {
   const [y, m, day] = d.split("-")
@@ -38,6 +35,7 @@ function HomeContent() {
   const [activeTab, setActiveTab] = useState<string>("all")
   const [query, setQuery] = useState("")
   const autoTriggered = useRef(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const activeDate = searchParams.get("date") ?? todayStr()
 
@@ -48,7 +46,7 @@ function HomeContent() {
   }
 
   const loadData = useCallback(async () => {
-    setNewsStatus("loading")
+    if (!refreshing) setNewsStatus("loading")
     try {
       const cats = await api.getCategories()
       setCategories(cats)
@@ -69,7 +67,7 @@ function HomeContent() {
     } catch {
       setNewsStatus("error")
     }
-  }, [activeDate])
+  }, [activeDate, refreshing])
 
   useEffect(() => {
     loadData()
@@ -134,32 +132,55 @@ function HomeContent() {
       setSelected((prev) => (prev ? { ...prev, is_favorited: nowFavorited } : prev))
   }
 
+  // 统一轮询逻辑
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return
+    pollRef.current = setInterval(async () => {
+      try {
+        const st = await api.getStatus()
+        if (st.progress) setProgress(st.progress)
+        if (!st.pipeline_running) {
+          stopPolling()
+          setRefreshing(false)
+          setProgress(null)
+          await loadData()
+        }
+      } catch {
+        stopPolling()
+        setRefreshing(false)
+        setProgress(null)
+      }
+    }, 5000)
+  }, [loadData])
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  // 组件卸载时清除轮询
+  useEffect(() => {
+    return () => stopPolling()
+  }, [stopPolling])
+
   const triggerRefresh = useCallback(async () => {
+    if (refreshing) return
     setRefreshing(true)
     setProgress(null)
     try {
-      await api.triggerRefresh()
-      const poll = setInterval(async () => {
-        try {
-          const st = await api.getStatus()
-          if (st.progress) setProgress(st.progress)
-          if (!st.pipeline_running) {
-            clearInterval(poll)
-            setRefreshing(false)
-            setProgress(null)
-            await loadData()
-          }
-        } catch {
-          clearInterval(poll)
-          setRefreshing(false)
-          setProgress(null)
-        }
-      }, 5000)
+      const res = await api.triggerRefresh()
+      if (res.status === "already_running") {
+        const st = await api.getStatus()
+        if (st.progress) setProgress(st.progress)
+      }
+      startPolling()
     } catch {
       setRefreshing(false)
       setProgress(null)
     }
-  }, [loadData])
+  }, [refreshing, startPolling])
 
   useEffect(() => {
     if (
@@ -174,28 +195,13 @@ function HomeContent() {
       if (st.pipeline_running) {
         setRefreshing(true)
         if (st.progress) setProgress(st.progress)
-        const poll = setInterval(async () => {
-          try {
-            const s = await api.getStatus()
-            if (s.progress) setProgress(s.progress)
-            if (!s.pipeline_running) {
-              clearInterval(poll)
-              setRefreshing(false)
-              setProgress(null)
-              await loadData()
-            }
-          } catch {
-            clearInterval(poll)
-            setRefreshing(false)
-            setProgress(null)
-          }
-        }, 5000)
+        startPolling()
       } else if (st.today_count === 0) {
         autoTriggered.current = true
         triggerRefresh()
       }
     })
-  }, [newsStatus, activeDate, refreshing, triggerRefresh, loadData])
+  }, [newsStatus, activeDate, refreshing, triggerRefresh, startPolling])
 
   return (
     <>
@@ -235,46 +241,46 @@ function HomeContent() {
           </p>
         </div>
 
-        {newsStatus === "loading" && <NewsSkeleton />}
+        {refreshing && (
+          <div className="text-center py-24">
+            <div className="flex flex-col items-center gap-3">
+              <span className="w-7 h-7 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+              <p className="text-[#525252] text-sm">
+                {progress ? progress.step : "正在为你抓取今日新闻…"}
+              </p>
+              {progress && (
+                <div className="w-56 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#2563EB] rounded-full transition-all duration-500"
+                    style={{ width: `${Math.round((progress.step_index / progress.total_steps) * 100)}%` }}
+                  />
+                </div>
+              )}
+              <p className="text-[#A3A3A3] text-xs">这通常需要 1-3 分钟，请稍候</p>
+            </div>
+          </div>
+        )}
 
-        {newsStatus === "error" && (
+        {!refreshing && newsStatus === "loading" && <NewsSkeleton />}
+
+        {!refreshing && newsStatus === "error" && (
           <div className="text-center py-24">
             <p className="text-[#525252] text-sm mb-2">加载失败</p>
             <p className="text-[#A3A3A3] text-xs">请确认后端已启动（localhost:8000）</p>
           </div>
         )}
 
-        {newsStatus === "empty" && (
+        {!refreshing && newsStatus === "empty" && (
           <div className="text-center py-24">
             {activeDate === todayStr() ? (
               <>
-                {!refreshing ? (
-                  <>
-                    <p className="text-[#525252] text-sm mb-4">今日暂无内容</p>
-                    <button
-                      onClick={triggerRefresh}
-                      className="px-5 py-2.5 bg-[#2563EB] text-white text-sm font-medium rounded-full hover:bg-[#1D4ED8] transition-colors"
-                    >
-                      立即抓取今日新闻
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-3">
-                    <span className="w-7 h-7 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
-                    <p className="text-[#525252] text-sm">
-                      {progress ? progress.step : "正在为你抓取今日新闻…"}
-                    </p>
-                    {progress && (
-                      <div className="w-56 h-1.5 bg-stone-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#2563EB] rounded-full transition-all duration-500"
-                          style={{ width: `${Math.round((progress.step_index / progress.total_steps) * 100)}%` }}
-                        />
-                      </div>
-                    )}
-                    <p className="text-[#A3A3A3] text-xs">这通常需要 1-3 分钟，请稍候</p>
-                  </div>
-                )}
+                <p className="text-[#525252] text-sm mb-4">今日暂无内容</p>
+                <button
+                  onClick={triggerRefresh}
+                  className="px-5 py-2.5 bg-[#2563EB] text-white text-sm font-medium rounded-full hover:bg-[#1D4ED8] transition-colors"
+                >
+                  立即抓取今日新闻
+                </button>
               </>
             ) : (
               <p className="text-[#A3A3A3] text-sm">该日期暂无内容</p>
@@ -335,6 +341,7 @@ function HomeContent() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onFavoriteToggle={handleFavoriteToggle}
+        categories={categories}
       />
     </>
   )

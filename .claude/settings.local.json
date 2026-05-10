@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(curl -s http://localhost:8000/api/admin/status)",
-      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'Running: {d[\\\\\"pipeline_running\\\\\"]}'\\); p=d.get\\('progress'\\); print\\(f'Step: {p[\\\\\"step_index\\\\\"]}/7 - {p[\\\\\"step\\\\\"]}'\\) if p else print\\('No progress'\\); print\\(f'Today: {d[\\\\\"today_count\\\\\"]}条'\\)\")"
-    ]
-  }
-}

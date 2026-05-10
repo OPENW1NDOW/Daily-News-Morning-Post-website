@@ -1,7 +1,7 @@
 "use client"
 
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import type { NewsItem } from "@/lib/types"
+import type { NewsItem, Category } from "@/lib/types"
 import { FavoriteButton } from "./FavoriteButton"
 
 interface Props {
@@ -9,25 +9,13 @@ interface Props {
   open: boolean
   onClose: () => void
   onFavoriteToggle?: (id: number, nowFavorited: boolean) => void
+  categories?: Category[]
 }
 
-const CATEGORY_NAMES: Record<string, string> = {
-  ai: "AI 与大模型",
-  tech: "科技产业",
-  policy: "政策与监管",
-  research: "学术研究",
-  business: "商业与经济",
-  international: "国际时政",
-  chip: "芯片与硬件",
-  robotics: "机器人与自动化",
-  security: "网络安全",
-  social: "社会与人文",
-}
-
-export function NewsDrawer({ item, open, onClose, onFavoriteToggle }: Props) {
+export function NewsDrawer({ item, open, onClose, onFavoriteToggle, categories }: Props) {
   if (!item) return null
 
-  const categoryName = CATEGORY_NAMES[item.category] ?? item.category
+  const categoryName = categories?.find((c) => c.key === item.category)?.name ?? item.category
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>

@@ -84,7 +84,7 @@ async def fetch_all_sources_async(sources: list) -> dict[int, list[FeedEntry]]:
         src = url_to_source.get(url)
         if src is None:
             continue
-        src.last_fetched_at = datetime.utcnow()
+        src.last_fetched_at = datetime.now(timezone.utc)
         if entries is None:
             src.last_status = "failed"
         else:

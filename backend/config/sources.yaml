@@ -210,7 +210,7 @@ sources:
     name: AnandTech
     url: https://www.anandtech.com/rss/
     use_proxy: true
-    enabled: true
+    enabled: false  # 2024 年 1 月已停运
 
   - key: semiwiki
     name: SemiWiki
@@ -266,7 +266,7 @@ sources:
     name: Threatpost
     url: https://threatpost.com/feed/
     use_proxy: true
-    enabled: true
+    enabled: false  # 2023 年 2 月已关停
 
   - key: freebuf
     name: FreeBuf

@@ -30,7 +30,9 @@ out/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / 开发工具
 .vscode/
 .idea/
 *.swp
+.claude/
+tasks/

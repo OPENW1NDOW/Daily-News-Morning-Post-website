@@ -1,14 +1,11 @@
 "use client"
 
 import { useRef } from "react"
+import { todayStr } from "@/lib/utils"
 
 interface Props {
   date: string
   onChange: (date: string) => void
-}
-
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
 }
 
 function yesterdayStr() {

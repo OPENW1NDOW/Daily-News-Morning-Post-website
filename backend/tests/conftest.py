@@ -74,7 +74,7 @@ def make_news(db):
 
     def _make(**kw):
         defaults = {
-            "date": date_type(2026, 5, 9),
+            "date": date_type.today(),
             "category": "ai",
             "importance": 70,
             "title": "测试标题",

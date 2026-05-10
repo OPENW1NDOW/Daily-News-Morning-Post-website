@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from sqlalchemy import (
     Integer, String, Boolean, DateTime, Date, Text, JSON, ForeignKey, UniqueConstraint
 )
@@ -33,7 +33,7 @@ class RawArticle(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     raw_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     category: Mapped[str | None] = mapped_column(String, nullable=True)
     importance: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -54,7 +54,7 @@ class NewsItem(Base):
     background: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_links: Mapped[list | None] = mapped_column(JSON, nullable=True)
     raw_article_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("raw_articles.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     favorite: Mapped["Favorite | None"] = relationship(back_populates="news_item", uselist=False)
 
@@ -64,6 +64,6 @@ class Favorite(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     news_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("news_items.id"), unique=True, nullable=False)
-    favorited_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    favorited_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     news_item: Mapped["NewsItem"] = relationship(back_populates="favorite")

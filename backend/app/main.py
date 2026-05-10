@@ -21,6 +21,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI News Aggregator", lifespan=lifespan)
 
+# 缓存 categories.yaml，避免每次请求都读磁盘
+import yaml, pathlib
+_CATEGORIES_CFG = yaml.safe_load(
+    (pathlib.Path(__file__).parent.parent / "config" / "categories.yaml")
+    .read_text(encoding="utf-8")
+)["categories"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -55,11 +62,6 @@ def list_categories(db=Depends(get_db)):
         .group_by(NewsItem.category)
         .all()
     )
-    import yaml, pathlib
-    cfg = yaml.safe_load(
-        (pathlib.Path(__file__).parent.parent / "config" / "categories.yaml")
-        .read_text(encoding="utf-8")
-    )
     return [
         {
             "key": c["key"],
@@ -67,5 +69,5 @@ def list_categories(db=Depends(get_db)):
             "description": c.get("description", ""),
             "count": counts.get(c["key"], 0),
         }
-        for c in cfg["categories"]
+        for c in _CATEGORIES_CFG
     ]

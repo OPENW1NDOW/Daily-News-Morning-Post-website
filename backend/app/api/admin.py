@@ -2,6 +2,7 @@
 Admin API：手动触发流水线 + 状态查询。
 """
 import asyncio
+import threading
 from datetime import date
 from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ logger = get_logger(__name__)
 
 # 全局运行状态，防止重复触发
 _pipeline_running = False
+_pipeline_lock = threading.Lock()
 _last_run_result: dict | None = None
 
 
@@ -29,16 +31,18 @@ def _run_pipeline_sync(db_factory):
         _last_run_result = {"status": "error", "error": str(e)}
         logger.error(f"手动触发流水线失败: {e}", exc_info=True)
     finally:
-        _pipeline_running = False
+        with _pipeline_lock:
+            _pipeline_running = False
         db.close()
 
 
 @router.post("/api/admin/refresh")
 def refresh(background_tasks: BackgroundTasks):
     global _pipeline_running
-    if _pipeline_running:
-        return {"status": "already_running", "message": "流水线正在运行中，请勿重复触发"}
-    _pipeline_running = True
+    with _pipeline_lock:
+        if _pipeline_running:
+            return {"status": "already_running", "message": "流水线正在运行中，请勿重复触发"}
+        _pipeline_running = True
     from ..db import SessionLocal
     background_tasks.add_task(_run_pipeline_sync, SessionLocal)
     return {"status": "started", "message": "流水线已在后台启动"}
