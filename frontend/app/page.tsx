@@ -237,7 +237,7 @@ function HomeContent() {
             今日要闻速览
           </h2>
           <p className="text-[14px] text-[#525252]">
-            {formatDateZH(activeDate)} · 覆盖 10 个板块
+            {formatDateZH(activeDate)} · 覆盖 {categories.length} 个板块
           </p>
         </div>
 

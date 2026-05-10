@@ -1,16 +1,14 @@
 "use client"
 
 const GRADIENTS: Record<string, { from: string; via: string; to: string; label: string }> = {
-  ai:            { from: "#6366F1", via: "#8B5CF6", to: "#A855F7", label: "AI" },      // 靛紫
-  tech:          { from: "#0EA5E9", via: "#0284C7", to: "#1D4ED8", label: "TECH" },    // 天蓝→钴蓝
-  policy:        { from: "#475569", via: "#334155", to: "#0F172A", label: "POLICY" },  // 石墨灰蓝
-  research:      { from: "#A855F7", via: "#C026D3", to: "#DB2777", label: "RES" },     // 紫红
-  business:      { from: "#CA8A04", via: "#D97706", to: "#B45309", label: "BIZ" },     // 琥珀金
-  international: { from: "#0D9488", via: "#059669", to: "#047857", label: "WORLD" },   // 青翠绿
-  chip:          { from: "#06B6D4", via: "#14B8A6", to: "#2DD4BF", label: "CHIP" },    // 青绿
-  robotics:      { from: "#F97316", via: "#EA580C", to: "#DC2626", label: "ROBOT" },   // 橙红
-  security:      { from: "#E11D48", via: "#BE123C", to: "#881337", label: "SEC" },     // 玫红酒红
-  social:        { from: "#EC4899", via: "#F472B6", to: "#FB7185", label: "SOCIAL" },  // 粉
+  ai:            { from: "#6366F1", via: "#8B5CF6", to: "#A855F7", label: "AI" },         // 靛紫
+  ai_paper:      { from: "#7C3AED", via: "#9333EA", to: "#C026D3", label: "PAPER" },      // 深紫→品红
+  tech:          { from: "#0EA5E9", via: "#0284C7", to: "#1D4ED8", label: "TECH" },       // 天蓝→钴蓝
+  internet:      { from: "#06B6D4", via: "#0891B2", to: "#0E7490", label: "NET" },        // 青色
+  business:      { from: "#CA8A04", via: "#D97706", to: "#B45309", label: "BIZ" },        // 琥珀金
+  finance:       { from: "#DC2626", via: "#B91C1C", to: "#991B1B", label: "FIN" },        // 正红
+  international: { from: "#0D9488", via: "#059669", to: "#047857", label: "WORLD" },      // 青翠绿
+  social:        { from: "#EC4899", via: "#F472B6", to: "#FB7185", label: "SOCIAL" },     // 粉
   other:         { from: "#6B7280", via: "#4B5563", to: "#374151", label: "—" },
 }
 

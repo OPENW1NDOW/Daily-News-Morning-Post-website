@@ -1,41 +1,37 @@
-# 板块定义
+# 板块定义（前端按此顺序显示）
 categories:
+  # ── AI 相关 ──
   - key: ai
     name: AI 与大模型
-    description: 大语言模型、多模态、AI 产品、算法突破、开源模型
+    description: 大语言模型、多模态、AI产品、算法突破、开源模型、AI公司动态
 
+  - key: ai_paper
+    name: AI 前沿论文
+    description: AI领域最新学术论文、实验室突破、技术创新、算法进展
+
+  # ── 科技与互联网 ──
   - key: tech
     name: 科技产业
-    description: 科技公司动态、产品发布、行业竞争、投融资
+    description: 消费电子、硬件设备、软件应用、技术趋势
 
-  - key: policy
-    name: 政策与监管
-    description: AI 法规、数据安全、政府政策、国际监管动态
+  - key: internet
+    name: 互联网
+    description: 互联网公司动态、平台运营、社交网络、电商、游戏、内容生态
 
-  - key: research
-    name: 学术研究
-    description: 论文、实验室成果、基础科学突破
-
+  # ── 商业与金融 ──
   - key: business
     name: 商业与经济
-    description: 宏观经济、商业模式、企业战略、市场分析
+    description: 企业战略、商业模式创新、产业格局变化、就业市场、消费趋势
 
+  - key: finance
+    name: 金融投资
+    description: 股市行情、投资机构动向、宏观经济政策对市场的影响、加密货币、企业IPO与融资
+
+  # ── 时事与社会 ──
   - key: international
     name: 国际时政
-    description: 地缘政治、国际关系、重大外交事件
-
-  - key: chip
-    name: 芯片与硬件
-    description: 半导体、GPU、CPU、硬件创新、供应链
-
-  - key: robotics
-    name: 机器人与自动化
-    description: 具身智能、工业机器人、自动驾驶
-
-  - key: security
-    name: 网络安全
-    description: 数据泄露、漏洞、攻防、隐私保护
+    description: 地缘政治、国际关系、重大外交事件、战争冲突、全球治理
 
   - key: social
-    name: 社会与人文
-    description: AI 对就业、教育、伦理、社会结构的影响
+    name: 社会人文
+    description: 社会热点事件、民生问题、文化现象、教育变革、伦理讨论、环境保护

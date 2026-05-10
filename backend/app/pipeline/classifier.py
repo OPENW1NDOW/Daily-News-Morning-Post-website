@@ -1,6 +1,7 @@
 """
 批量分类与重要度评分。
 每次最多 40 条，输出每条的 {category, importance, keep}。
+各板块有独立的分类标准，由 CATEGORY_CRITERIA 定义。
 """
 import json
 import re
@@ -14,46 +15,105 @@ _client = None
 _BATCH_SIZE = 40
 
 CATEGORIES = [
-    "ai", "tech", "policy", "research",
-    "business", "international", "chip",
-    "robotics", "security", "social",
+    "ai", "tech", "internet", "finance", "business",
+    "international", "ai_paper", "social",
 ]
 
-_CATEGORY_DESC = """
-- ai: 大语言模型、多模态、AI产品、算法突破、开源模型
-- tech: 科技公司动态、产品发布、行业竞争、投融资
-- policy: AI法规、数据安全、政府政策、国际监管
-- research: 论文、实验室成果、基础科学突破
-- business: 宏观经济、商业模式、企业战略、市场分析
-- international: 地缘政治、国际关系、重大外交事件
-- chip: 半导体、GPU、CPU、硬件创新、供应链
-- robotics: 具身智能、工业机器人、自动驾驶
-- security: 数据泄露、漏洞、攻防、隐私保护
-- social: AI对就业/教育/伦理/社会结构的影响
-"""
+# ── 各板块独立的分类标准 ─────────────────────────────────────
+CATEGORY_CRITERIA = {
+    "ai": {
+        "name": "AI 与大模型",
+        "focus": "大语言模型、多模态AI、AI产品发布、算法突破、开源模型、AI公司融资与战略",
+        "importance_high": "GPT级别模型发布、重大算法突破、头部AI公司战略级动作",
+        "importance_mid": "AI产品更新、开源模型发布、AI应用落地案例",
+        "reject": "泛科技新闻（非AI核心）、AI概念炒作但无实质内容",
+    },
+    "tech": {
+        "name": "科技产业",
+        "focus": "消费电子产品、硬件设备、软件应用、技术趋势、开发者生态",
+        "importance_high": "新品类发布（如Vision Pro级别）、颠覆性技术变革",
+        "importance_mid": "产品迭代更新、硬件评测、技术教程",
+        "reject": "互联网平台运营、AI相关（应归ai板块）、金融数据",
+    },
+    "internet": {
+        "name": "互联网",
+        "focus": "互联网公司动态、平台运营策略、社交网络、电商、游戏、内容生态、用户增长",
+        "importance_high": "巨头战略转型、重大并购、监管政策影响整个行业",
+        "importance_mid": "产品功能更新、运营策略变化、行业数据分析",
+        "reject": "纯技术论文、硬件产品、金融投资数据",
+    },
+    "finance": {
+        "name": "金融投资",
+        "focus": "股市行情、投资机构动向、宏观经济政策对市场影响、加密货币、企业IPO与融资",
+        "importance_high": "市场重大波动、央行政策、百亿级并购/IPO",
+        "importance_mid": "个股异动、机构调仓、行业融资事件",
+        "reject": "纯商业分析（无金融数据支撑）、科技产品新闻",
+    },
+    "business": {
+        "name": "商业与经济",
+        "focus": "企业战略、商业模式创新、产业格局变化、就业市场、消费趋势、宏观经济",
+        "importance_high": "行业格局重塑、重大企业战略转型、全球经济事件",
+        "importance_mid": "企业财报、行业报告、商业模式分析",
+        "reject": "纯金融交易数据（应归finance）、科技产品发布",
+    },
+    "international": {
+        "name": "国际时政",
+        "focus": "地缘政治、国际关系、重大外交事件、战争冲突、全球治理、国际组织",
+        "importance_high": "战争/和平进程、重大外交突破、国际制裁",
+        "importance_mid": "国家间摩擦、国际会议、政策声明",
+        "reject": "科技公司海外业务（应归tech/internet）、经济制裁的具体金融影响",
+    },
+    "ai_paper": {
+        "name": "AI 前沿论文",
+        "focus": "AI领域最新学术论文、实验室突破、技术创新、算法进展、学术会议",
+        "importance_high": "顶会最佳论文、颠覆性算法、Nature/Science级AI成果",
+        "importance_mid": "arXiv热门论文、知名实验室成果、技术报告",
+        "reject": "AI产品商业新闻（应归ai）、科普文章、综述类内容",
+    },
+    "social": {
+        "name": "社会人文",
+        "focus": "社会热点事件、民生问题、文化现象、教育变革、伦理讨论、环境保护、公共健康",
+        "importance_high": "重大社会事件、影响广泛的政策变化、公共卫生危机",
+        "importance_mid": "社会现象讨论、教育改革、文化趋势",
+        "reject": "科技产品新闻、金融市场数据、纯学术论文",
+    },
+}
+
+_CATEGORY_DESC = "\n".join(
+    f"- {k}: {v['focus']}" for k, v in CATEGORY_CRITERIA.items()
+)
 
 _SYSTEM_PROMPT = f"""你是一位资深新闻编辑，负责新闻的分类与价值评估。用户会给你一批新闻条目（JSON 数组），每条有 id、title、summary。
 
 请对每条输出分类结果，严格返回 JSON 数组，每个元素格式：
 {{"id": <原始id>, "category": "<板块key>", "importance": <0-100整数>, "keep": <true或false>}}
 
-板块说明：
-{_CATEGORY_DESC.strip()}
+板块分类标准：
+{_CATEGORY_DESC}
 
-分类规则：
-1. category 必须是上面 10 个 key 之一，或 "other"（明显不相关时才用 other）
-2. 每条只归入相关度最高的单一板块
+重要性评估规则：
+每条新闻根据其所属板块的具体标准评估重要性：
+""" + "\n".join(
+    f"""【{v['name']}】
+  - 高（80-100）：{v['importance_high']}
+  - 中（50-79）：{v['importance_mid']}
+  - 低（0-49）：常规资讯、一般性报道"""
+    for v in CATEGORY_CRITERIA.values()
+) + """
 
-重要性评估标准（importance）：
-- 80-100：重大突发事件、影响深远的政策法规、行业格局性事件
-- 50-79：有实质价值的行业动态、值得关注的技术进展、重要企业决策
-- 30-49：常规资讯、一般性报道
-- 0-29：软文、低质内容、缺乏信息增量的文章
-
-过滤标准（keep=false）：
+过滤规则（keep=false）：
 - 明显广告、软文、招聘、活动预告
 - 标题党但内容空洞
 - 重复报道同一事件且无新增信息
+""" + "\n".join(
+    f"- 【{v['name']}】排除：{v['reject']}"
+    for v in CATEGORY_CRITERIA.values()
+) + """
+
+分类核心原则：
+1. category 必须是上面 8 个 key 之一，或 "other"（明显不相关时才用 other）
+2. 每条只归入相关度最高的单一板块
+3. 严格基于标题和摘要内容判断，不要推测文章未提及的信息
 
 只返回 JSON 数组，不要任何解释文字"""
 

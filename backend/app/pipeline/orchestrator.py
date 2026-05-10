@@ -13,6 +13,8 @@ logger = get_logger(__name__)
 TOP_PER_CATEGORY = 8   # 每板块取 top-8 进入摘要，保留 6 条
 FINAL_PER_CATEGORY = 6
 LOOKBACK_HOURS = 24
+CST = timezone(timedelta(hours=8))
+CUTOFF_HOUR = 8  # 北京时间 8:00 为分界，8 点前算前一天
 
 # 流水线进度（供 admin status API 轮询）
 _pipeline_progress: dict = {
@@ -21,7 +23,7 @@ _pipeline_progress: dict = {
     "step_index": 0,
     "total_steps": 7,
     "categories_done": 0,
-    "total_categories": 10,
+    "total_categories": len(CATEGORIES),
 }
 _progress_lock = threading.Lock()
 
@@ -55,11 +57,23 @@ async def _run_daily_async(db) -> dict:
     from .extractor import extract_text
     from .summarizer import summarize
 
-    today = date.today()
-    logger.info(f"===== 流水线开始：{today} =====")
+    now_cst = datetime.now(CST)
+    # 8 点前算前一天，8 点后算当天
+    target_date = (now_cst - timedelta(days=1)).date() if now_cst.hour < CUTOFF_HOUR else now_cst.date()
+    day_start = now_cst - timedelta(hours=24)
+    day_end = now_cst
+    logger.info(f"===== 流水线开始：{target_date} =====")
+    logger.info(f"抓取窗口：{day_start.strftime('%m-%d %H:%M')} ~ {day_end.strftime('%m-%d %H:%M')} CST")
     _update_progress(running=True, categories_done=0)
 
     try:
+        # ── Step 0: 清除今日旧 news_items，避免重复累加 ──────
+        _update_progress(step="清理旧数据...", step_index=0)
+        deleted = db.query(NewsItem).filter(NewsItem.date == target_date).delete()
+        db.commit()
+        if deleted:
+            logger.info(f"[0/7] 已清除 {deleted} 条今日旧 news_items")
+
         # ── Step 1: 拉取所有启用源 ─────────────────────────────
         _update_progress(step="正在拉取 RSS 源...", step_index=1)
         logger.info("[1/7] 拉取 RSS 源...")
@@ -68,12 +82,12 @@ async def _run_daily_async(db) -> dict:
         total_fetched = sum(fetch_counts.values())
         logger.info(f"[1/7] 共拉取 {total_fetched} 条新原始文章")
 
-        # ── Step 2: 过滤 24h 内的文章 ──────────────────────────
-        _update_progress(step="正在筛选 24h 内文章...", step_index=2)
-        logger.info("[2/7] 过滤 24h 内文章...")
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
+        # ── Step 2: 过滤当日文章 ──────────────────────────
+        _update_progress(step="正在筛选当日文章...", step_index=2)
+        logger.info(f"[2/7] 过滤 {target_date} 文章...")
         candidates = db.query(RawArticle).filter(
-            (RawArticle.published_at >= cutoff) | (RawArticle.published_at.is_(None))
+            RawArticle.published_at >= day_start,
+            RawArticle.published_at < day_end,
         ).all()
         logger.info(f"[2/7] 候选文章：{len(candidates)} 条")
 
@@ -143,7 +157,7 @@ async def _run_daily_async(db) -> dict:
                 source_name = src.name if src else "未知来源"
 
                 item = NewsItem(
-                    date=today,
+                    date=target_date,
                     category=cat,
                     importance=art.importance or 50,
                     title=art.title,
@@ -162,11 +176,11 @@ async def _run_daily_async(db) -> dict:
             with _progress_lock:
                 _pipeline_progress["categories_done"] += 1
                 done = _pipeline_progress["categories_done"]
-            _update_progress(step=f"已完成 {done}/10 板块")
+            _update_progress(step=f"已完成 {done}/{len(CATEGORIES)} 板块")
             logger.info(f"  {cat}: 写入 {written} 条")
 
         total = sum(final_counts.values())
-        logger.info(f"===== 流水线完成：{today}，共 {total} 条 =====")
+        logger.info(f"===== 流水线完成：{target_date}，共 {total} 条 =====")
         _update_progress(step=f"完成，共 {total} 条新闻")
         return final_counts
     finally:
