@@ -13,7 +13,9 @@ scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 async def _run_pipeline_job():
     from .db import SessionLocal
     from .pipeline.orchestrator import run_daily
+    from . import rsshub
     logger.info("调度触发：开始执行每日流水线")
+    rsshub.start()
     db = SessionLocal()
     try:
         counts = run_daily(db)

@@ -1,5 +1,9 @@
 # RSS 源清单
 # use_proxy: true 表示走代理拉取（海外源）
+# RSSHub 源使用 ${RSSHUB_BASE_URL} 占位符，运行时由环境变量替换
+# 本地开发: RSSHUB_BASE_URL=http://localhost:1200
+# 生产环境: RSSHUB_BASE_URL=http://rsshub:1200 (Docker 内部网络)
+
 sources:
   # ── AI 与大模型 ──────────────────────────────────────────
   - key: 36kr
@@ -20,21 +24,9 @@ sources:
     use_proxy: false
     enabled: true
 
-  - key: syncedreview
-    name: 机器之心 Synced
-    url: https://syncedreview.com/feed/
-    use_proxy: true
-    enabled: true
-
   - key: venturebeat_ai
     name: VentureBeat AI
     url: https://venturebeat.com/category/ai/feed/
-    use_proxy: true
-    enabled: true
-
-  - key: theregister_ai
-    name: The Register AI
-    url: https://www.theregister.com/software/ai_ml/headlines.atom
     use_proxy: true
     enabled: true
 
@@ -48,7 +40,7 @@ sources:
     name: OpenAI Blog
     url: https://openai.com/blog/rss/
     use_proxy: true
-    enabled: true
+    enabled: false  # 403 反爬
 
   - key: huggingface_blog
     name: Hugging Face Blog
@@ -56,164 +48,15 @@ sources:
     use_proxy: true
     enabled: true
 
-  # ── 科技产业 ─────────────────────────────────────────────
-  - key: sspai
-    name: 少数派
-    url: https://sspai.com/feed
+  - key: huggingface_papers
+    name: Hugging Face Papers
+    url: ${RSSHUB_BASE_URL}/huggingface/daily-papers
     use_proxy: false
     enabled: true
 
-  - key: ifanr
-    name: 爱范儿
-    url: https://www.ifanr.com/feed
-    use_proxy: false
-    enabled: true
-
-  - key: theverge
-    name: The Verge
-    url: https://www.theverge.com/rss/index.xml
-    use_proxy: true
-    enabled: true
-
-  - key: wired
-    name: Wired
-    url: https://www.wired.com/feed/rss
-    use_proxy: true
-    enabled: true
-
-  - key: arstechnica
-    name: Ars Technica
-    url: https://feeds.arstechnica.com/arstechnica/index
-    use_proxy: true
-    enabled: true
-
-  - key: ithome
-    name: IT之家
-    url: https://www.ithome.com/rss/
-    use_proxy: false
-    enabled: true
-
-  # ── 互联网 ───────────────────────────────────────────────
-  - key: pingwest
-    name: 品玩
-    url: https://www.pingwest.com/feed
-    use_proxy: false
-    enabled: true
-
-  - key: tmtpost
-    name: 钛媒体
-    url: https://www.tmtpost.com/rss.xml
-    use_proxy: false
-    enabled: true
-
-  - key: socialmedia_today
-    name: Social Media Today
-    url: https://www.socialmediaexaminer.com/feed/
-    use_proxy: true
-    enabled: true
-
-  - key: techcrunch
-    name: TechCrunch
-    url: https://techcrunch.com/feed/
-    use_proxy: true
-    enabled: true
-
-  # ── 金融投资 ─────────────────────────────────────────────
-  - key: wallstreetcn
-    name: 华尔街见闻
-    url: https://wallstreetcn.com/rss/news/global
-    use_proxy: false
-    enabled: true
-
-  - key: eastmoney
-    name: 东方财富
-    url: https://rss.eastmoney.com/rss/cjzx.xml
-    use_proxy: false
-    enabled: true
-
-  - key: cls_finance
-    name: 财联社
-    url: https://rss.cls.cn/cls
-    use_proxy: false
-    enabled: true
-
-  - key: ft
-    name: Financial Times
-    url: https://www.ft.com/?format=rss
-    use_proxy: true
-    enabled: true
-
-  - key: bloomberg
-    name: Bloomberg
-    url: https://feeds.bloomberg.com/markets/news.rss
-    use_proxy: true
-    enabled: true
-
-  - key: reuters_business
-    name: Reuters Business
-    url: https://feeds.reuters.com/reuters/businessNews
-    use_proxy: true
-    enabled: true
-
-  # ── 商业与经济 ───────────────────────────────────────────
-  - key: huxiu
-    name: 虎嗅
-    url: https://www.huxiu.com/rss/
-    use_proxy: false
-    enabled: true
-
-  - key: thepaper
-    name: 澎湃新闻
-    url: https://feedx.net/rss/thepaper.xml
-    use_proxy: false
-    enabled: true
-
-  - key: economist
-    name: The Economist
-    url: https://www.economist.com/rss.xml
-    use_proxy: true
-    enabled: true
-
-  - key: caixin
-    name: 财新
-    url: https://www.caixin.com/rss/feed.xml
-    use_proxy: false
-    enabled: true
-
-  # ── 国际时政 ─────────────────────────────────────────────
-  - key: bbc_news
-    name: BBC News
-    url: https://feeds.bbci.co.uk/news/rss.xml
-    use_proxy: true
-    enabled: true
-
-  - key: aljazeera
-    name: Al Jazeera
-    url: https://www.aljazeera.com/xml/rss/all.xml
-    use_proxy: true
-    enabled: true
-
-  - key: guardian_world
-    name: Guardian World
-    url: https://www.theguardian.com/world/rss
-    use_proxy: true
-    enabled: true
-
-  - key: npr_world
-    name: NPR World
-    url: https://feeds.npr.org/1004/rss.xml
-    use_proxy: true
-    enabled: true
-
-  - key: reuters_world
-    name: Reuters World
-    url: https://feeds.reuters.com/reuters/worldNews
-    use_proxy: true
-    enabled: true
-
-  - key: xinhua
-    name: 新华社
-    url: http://www.xinhuanet.com/politics/xhll.xml
+  - key: qbitai
+    name: 量子位
+    url: https://www.qbitai.com/feed
     use_proxy: false
     enabled: true
 
@@ -248,28 +91,146 @@ sources:
     use_proxy: true
     enabled: true
 
+  # ── 科技产业 ─────────────────────────────────────────────
+  - key: sspai
+    name: 少数派
+    url: https://sspai.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: ifanr
+    name: 爱范儿
+    url: https://www.ifanr.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: theverge
+    name: The Verge
+    url: https://www.theverge.com/rss/index.xml
+    use_proxy: true
+    enabled: true
+
+  - key: arstechnica
+    name: Ars Technica
+    url: https://feeds.arstechnica.com/arstechnica/index
+    use_proxy: true
+    enabled: false  # 连接失败
+
+  - key: ithome
+    name: IT之家
+    url: https://www.ithome.com/rss/
+    use_proxy: false
+    enabled: true
+
+  - key: hackernews
+    name: Hacker News
+    url: ${RSSHUB_BASE_URL}/hackernews/best
+    use_proxy: false
+    enabled: true
+
+  # ── 互联网 ───────────────────────────────────────────────
+  - key: pingwest
+    name: 品玩
+    url: https://www.pingwest.com/feed
+    use_proxy: false
+    enabled: true
+
+  - key: tmtpost
+    name: 钛媒体
+    url: https://www.tmtpost.com/rss.xml
+    use_proxy: false
+    enabled: true
+
+  - key: techcrunch
+    name: TechCrunch
+    url: https://techcrunch.com/feed/
+    use_proxy: true
+    enabled: true
+
+  - key: zhihu_hot
+    name: 知乎热榜
+    url: ${RSSHUB_BASE_URL}/zhihu/hot
+    use_proxy: false
+    enabled: true
+
+  # ── 金融投资 ─────────────────────────────────────────────
+  - key: cls_finance
+    name: 财联社
+    url: https://rss.cls.cn/cls
+    use_proxy: false
+    enabled: true
+
+  - key: ft
+    name: Financial Times
+    url: https://www.ft.com/?format=rss
+    use_proxy: true
+    enabled: true
+
+  - key: bloomberg
+    name: Bloomberg
+    url: https://feeds.bloomberg.com/markets/news.rss
+    use_proxy: true
+    enabled: true
+
+  - key: tonghuashun
+    name: 同花顺
+    url: ${RSSHUB_BASE_URL}/10jqka/realtimenews
+    use_proxy: false
+    enabled: true
+
+  - key: wallstreetcn
+    name: 华尔街见闻
+    url: ${RSSHUB_BASE_URL}/wallstreetcn/news/global
+    use_proxy: false
+    enabled: false  # RSSHub 路由 503
+
+  # ── 商业与经济 ───────────────────────────────────────────
+  - key: huxiu
+    name: 虎嗅
+    url: https://www.huxiu.com/rss/
+    use_proxy: false
+    enabled: true
+
+  - key: caixin
+    name: 财新
+    url: ${RSSHUB_BASE_URL}/caixin/latest
+    use_proxy: false
+    enabled: true
+
+  - key: thepaper
+    name: 澎湃新闻
+    url: https://www.thepaper.cn/rss_newslist_newsDetail
+    use_proxy: false
+    enabled: true
+
+  # ── 国际时政 ─────────────────────────────────────────────
+  - key: bbc_news
+    name: BBC News
+    url: https://feeds.bbci.co.uk/news/rss.xml
+    use_proxy: true
+    enabled: true
+
+  - key: aljazeera
+    name: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    use_proxy: true
+    enabled: true
+
+  - key: guardian_world
+    name: Guardian World
+    url: https://www.theguardian.com/world/rss
+    use_proxy: true
+    enabled: true
+
+  - key: npr_world
+    name: NPR World
+    url: https://feeds.npr.org/1004/rss.xml
+    use_proxy: true
+    enabled: true
+
   # ── 社会人文 ─────────────────────────────────────────────
   - key: guardian_society
     name: Guardian Society
     url: https://www.theguardian.com/society/rss
     use_proxy: true
     enabled: true
-
-  - key: people_daily
-    name: 人民日报
-    url: http://www.people.com.cn/rss/politics.xml
-    use_proxy: false
-    enabled: true
-
-  - key: chinadaily
-    name: China Daily
-    url: https://www.chinadaily.com.cn/rss/china_rss.xml
-    use_proxy: false
-    enabled: true
-
-  - key: sciencenet
-    name: 科学网
-    url: https://blog.sciencenet.cn/rss.php
-    use_proxy: false
-    enabled: true
-

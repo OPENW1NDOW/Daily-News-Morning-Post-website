@@ -1,10 +1,12 @@
 """
 批量分类与重要度评分。
-每次最多 40 条，输出每条的 {category, importance, keep}。
+每次最多 60 条，输出每条的 {category, importance, keep}。
 各板块有独立的分类标准，由 CATEGORY_CRITERIA 定义。
+支持并发处理（默认 5 个并发）。
 """
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 from ..config import settings
 from ..utils.logger import get_logger
@@ -12,7 +14,7 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 _client = None
-_BATCH_SIZE = 40
+_BATCH_SIZE = 60
 
 CATEGORIES = [
     "ai", "tech", "internet", "finance", "business",
@@ -192,13 +194,16 @@ def _classify_batch(items: list[dict]) -> list[dict]:
         return []
 
 
-def classify_articles(db, articles: list) -> int:
+def classify_articles(db, articles: list, max_workers: int = 5) -> int:
     """
     对 raw_articles 列表批量分类，更新 category/importance 字段。
+    支持并发处理，默认 5 个并发。
     返回成功分类的条数。
     """
     total_classified = 0
 
+    # 准备所有批次
+    batches = []
     for batch_start in range(0, len(articles), _BATCH_SIZE):
         batch = articles[batch_start: batch_start + _BATCH_SIZE]
         items = [
@@ -209,34 +214,50 @@ def classify_articles(db, articles: list) -> int:
             }
             for art in batch
         ]
+        batches.append((batch_start, batch, items))
 
-        results = _classify_batch(items)
-        if not results:
-            logger.warning(f"批次 {batch_start}-{batch_start+len(batch)} 分类失败，跳过")
-            continue
+    # 并发处理批次
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交所有批次任务
+        future_to_batch = {
+            executor.submit(_classify_batch, items): (batch_start, batch)
+            for batch_start, batch, items in batches
+        }
 
-        # 建立 id → result 映射
-        result_map = {r["id"]: r for r in results if isinstance(r, dict) and "id" in r}
+        # 收集结果
+        for future in as_completed(future_to_batch):
+            batch_start, batch = future_to_batch[future]
+            try:
+                results = future.result()
+                if not results:
+                    logger.warning(f"批次 {batch_start}-{batch_start+len(batch)} 分类失败，跳过")
+                    continue
 
-        for art in batch:
-            r = result_map.get(art.id)
-            if r is None:
-                continue
-            cat = r.get("category", "other")
-            imp = r.get("importance", 50)
-            keep = r.get("keep", True)
+                # 建立 id → result 映射
+                result_map = {r["id"]: r for r in results if isinstance(r, dict) and "id" in r}
 
-            if cat not in CATEGORIES:
-                cat = "other"
-            if not isinstance(imp, int) or not (0 <= imp <= 100):
-                imp = 50
+                for art in batch:
+                    r = result_map.get(art.id)
+                    if r is None:
+                        continue
+                    cat = r.get("category", "other")
+                    imp = r.get("importance", 50)
+                    keep = r.get("keep", True)
 
-            art.category = cat if keep else "other"
-            art.importance = imp
-            total_classified += 1
+                    if cat not in CATEGORIES:
+                        cat = "other"
+                    if not isinstance(imp, int) or not (0 <= imp <= 100):
+                        imp = 50
 
-        db.commit()
-        logger.info(f"分类批次 {batch_start//40 + 1}：{len(results)} 条完成")
+                    art.category = cat if keep else "other"
+                    art.importance = imp
+                    total_classified += 1
 
+                logger.info(f"分类批次 {batch_start//_BATCH_SIZE + 1}：{len(results)} 条完成")
+            except Exception as e:
+                logger.warning(f"批次 {batch_start}-{batch_start+len(batch)} 处理异常: {e}")
+
+    # 所有批次处理完后统一提交数据库
+    db.commit()
     logger.info(f"全部分类完成：{total_classified}/{len(articles)} 条")
     return total_classified

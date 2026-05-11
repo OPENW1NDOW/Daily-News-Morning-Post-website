@@ -199,7 +199,7 @@ class TestClassifyArticles:
 
     def test_batch_failure_skips_gracefully(self):
         """一批分类失败时跳过，不阻塞后续。"""
-        articles = [self._fake_article(id=i) for i in range(50)]  # 两批
+        articles = [self._fake_article(id=i) for i in range(120)]  # 两批（_BATCH_SIZE=60）
         call_count = [0]
 
         # 第一批失败，第二批成功
@@ -207,7 +207,7 @@ class TestClassifyArticles:
             call_count[0] += 1
             if call_count[0] == 1:
                 raise Exception("网络错误")
-            result = [{"id": a.id, "category": "ai", "importance": 60, "keep": True} for a in articles[40:]]
+            result = [{"id": a.id, "category": "ai", "importance": 60, "keep": True} for a in articles[60:]]
             mock = MagicMock()
             mock.choices = [MagicMock(message=MagicMock(content=json.dumps(result)))]
             return mock
@@ -220,5 +220,5 @@ class TestClassifyArticles:
             from app.pipeline.classifier import classify_articles
             count = classify_articles(db, articles)
 
-        # 只有第二批（10 条）成功
-        assert count == 10
+        # 只有第二批（60 条）成功
+        assert count == 60

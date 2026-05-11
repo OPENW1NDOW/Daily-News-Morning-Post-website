@@ -22,6 +22,8 @@ _last_run_result: dict | None = None
 def _run_pipeline_sync(db_factory):
     global _pipeline_running, _last_run_result
     from ..pipeline.orchestrator import run_daily
+    from .. import rsshub
+    rsshub.start()
     db = db_factory()
     try:
         counts = run_daily(db)

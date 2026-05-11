@@ -2,11 +2,17 @@ import pathlib
 import yaml
 from sqlalchemy.orm import Session
 from ..models import Source
+from ..config import settings
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 _SOURCES_PATH = pathlib.Path(__file__).parent.parent.parent / "config" / "sources.yaml"
+
+
+def _resolve_url(url: str) -> str:
+    """替换 URL 中的 ${RSSHUB_BASE_URL} 占位符。"""
+    return url.replace("${RSSHUB_BASE_URL}", settings.rsshub_base_url)
 
 
 def sync_sources(db: Session) -> None:
@@ -18,7 +24,7 @@ def sync_sources(db: Session) -> None:
             src = Source(key=item["key"])
             db.add(src)
         src.name = item["name"]
-        src.url = item["url"]
+        src.url = _resolve_url(item["url"])
         src.use_proxy = item.get("use_proxy", False)
         src.enabled = item.get("enabled", True)
     db.commit()

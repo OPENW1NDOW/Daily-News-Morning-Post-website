@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .db import init_db, SessionLocal, get_db
 from .pipeline.sync_sources import sync_sources
 from .scheduler import start_scheduler, stop_scheduler
+from . import rsshub
 
 
 @asynccontextmanager
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
     start_scheduler()
     yield
     stop_scheduler()
+    rsshub.stop()
 
 
 app = FastAPI(title="AI News Aggregator", lifespan=lifespan)

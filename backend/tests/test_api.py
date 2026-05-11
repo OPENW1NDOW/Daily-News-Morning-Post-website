@@ -12,12 +12,12 @@ class TestHealth:
 
 
 class TestCategories:
-    def test_returns_10_categories(self, client):
+    def test_returns_categories(self, client):
         resp = client.get("/api/categories")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
-        assert len(data) == 10
+        assert len(data) == 8
         keys = {c["key"] for c in data}
         assert "ai" in keys
         assert "tech" in keys
@@ -34,7 +34,7 @@ class TestCategories:
         by_key = {c["key"]: c["count"] for c in data}
         assert by_key["ai"] == 2
         assert by_key["tech"] == 1
-        assert by_key["policy"] == 0
+        assert by_key["international"] == 0
 
 
 class TestNewsList:

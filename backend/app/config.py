@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     proxy_url: str = "http://127.0.0.1:7890"
     database_url: str = "sqlite:///./data/news.db"
+    rsshub_base_url: str = "http://localhost:1200"
+    rsshub_auto_start: bool = True
+    rsshub_dir: str = ""
 
 
 settings = Settings()

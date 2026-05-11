@@ -1,9 +1,11 @@
 """
 流水线编排：7 步完整流程。
 fetch → time_filter → classify → select_top → extract → summarize → persist
+支持分类和摘要的并发处理。
 """
 import asyncio
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, date, timedelta, timezone
 from ..utils.logger import get_logger
 from .classifier import CATEGORIES
@@ -127,16 +129,32 @@ async def _run_daily_async(db) -> dict:
         db.commit()
         logger.info(f"[5/7] 正文提取完成（共 {len(all_selected)} 篇）")
 
-        # ── Step 6: 生成摘要 ────────────────────────────────────
+        # ── Step 6: 生成摘要（并发） ────────────────────────────
         _update_progress(step="AI 正在生成摘要...", step_index=6)
-        logger.info("[6/7] 生成 AI 摘要...")
+        logger.info("[6/7] 生成 AI 摘要（并发 5）...")
         summary_results: dict[int, dict | None] = {}
-        for art in all_selected:
-            text = art.full_text or art.raw_summary or art.title
-            result = summarize(art.title, text)
-            summary_results[art.id] = result
-            status = "ok" if result else "fail"
-            logger.debug(f"  摘要 [{status}] {art.title[:40]}")
+
+        # 主线程预提取文本，避免子线程触发 SQLAlchemy lazy loading
+        _articles_data = [
+            (art.id, art.title, art.full_text or art.raw_summary or art.title)
+            for art in all_selected
+        ]
+
+        def _summarize_one(item):
+            art_id, title, text = item
+            result = summarize(title, text)
+            return art_id, result
+
+        # 并发生成摘要
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(_summarize_one, item): item for item in _articles_data}
+            completed = 0
+            for future in as_completed(futures):
+                art_id, result = future.result()
+                summary_results[art_id] = result
+                completed += 1
+                if completed % 10 == 0 or completed == len(all_selected):
+                    logger.info(f"  摘要进度：{completed}/{len(all_selected)}")
 
         # ── Step 7: 写入 news_items ──────────────────────────────
         _update_progress(step="正在写入结果...", step_index=7)

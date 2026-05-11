@@ -13,17 +13,23 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 from app.utils.http import make_async_client
 from app.utils.logger import get_logger
+from app.config import settings
 
 logger = get_logger("probe_sources")
 
 TIMEOUT = 12.0
 
 
+def _resolve_url(url: str) -> str:
+    """替换 URL 中的 ${RSSHUB_BASE_URL} 占位符。"""
+    return url.replace("${RSSHUB_BASE_URL}", settings.rsshub_base_url)
+
+
 async def probe_one(key: str, name: str, url: str, use_proxy: bool, semaphore: asyncio.Semaphore) -> dict:
     async with semaphore:
         try:
             async with make_async_client(use_proxy=use_proxy, timeout=TIMEOUT) as client:
-                resp = await client.get(url)
+                resp = await client.get(_resolve_url(url))
                 status = resp.status_code
                 ok = status < 400
                 return {"key": key, "name": name, "ok": ok, "status": status, "error": None}
