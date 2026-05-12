@@ -36,6 +36,35 @@
 
 ---
 
+## 2026-05-12 — 前端编译卡死修复
+
+### 问题
+前端 `npm run dev` 每次编译时系统卡死，甚至导致电脑死机。
+
+### 根因
+`next/font/google` 加载 5 个字体，其中 Noto Sans SC 和 Noto Serif SC 两个中文字体被 Google Fonts 拆成 200+ 个子集文件。Turbopack 每次冷编译要处理全部 221 个字体文件（550MB 缓存），加上 15.5GB 内存同时跑 Cursor + Claude Code + Python 后端，内存耗尽导致系统卡死。
+
+### 修复方案
+将中文字体从 `next/font/google` 改为 CSS `@import` 从 Google Fonts CDN 加载。浏览器直接处理字体，Turbopack 完全不参与。
+
+### 效果
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| .next/ 缓存 | 550MB | 122MB (-77%) |
+| 字体文件数 | 221 个 | 14 个 (-93%) |
+| 编译就绪时间 | 卡死 | 931ms |
+
+### 相关文件
+- `frontend/app/globals.css` — 新增 CSS @import 加载中文字体
+- `frontend/app/layout.tsx` — 移除 CJK 字体的 next/font/google 导入
+- `frontend/package.json` — shadcn 从 dependencies 移到 devDependencies
+
+### 遗留问题
+- 中文字体目前走 Google CDN，国内访问可能较慢；如需完全自托管可后续优化
+- Git 分支规范尚未写入 CLAUDE.md（用户未要求）
+
+---
+
 <!-- 模板，复制使用
 ## YYYY-MM-DD — 简短标题
 - **做了什么**: ...

@@ -1,3 +1,6 @@
+/* 中文字体通过 CDN 加载，避免 Turbopack 处理 200+ 子集文件导致编译卡死 */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap");
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -50,6 +53,8 @@
 }
 
 :root {
+  --font-noto-sans-sc: "Noto Sans SC", sans-serif;
+  --font-noto-serif-sc: "Noto Serif SC", serif;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
