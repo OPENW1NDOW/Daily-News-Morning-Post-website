@@ -11,6 +11,9 @@
 - [ ] 编写 `frontend/Dockerfile`（Node 18，`next build` standalone 模式）
 - [ ] 编写 `docker-compose.yml`（fastapi + nextjs + nginx 三个服务）
 - [ ] 配置 Docker volume 持久化 SQLite 数据和日志
+- [ ] 添加 `healthcheck` 配置（FastAPI: `/api/health`，Next.js: HTTP 200，Nginx: HTTP 200）
+- [ ] 配置容器资源限制（`mem_limit`、`cpus`），2G 内存需防 OOM
+- [ ] 编写 `.dockerignore`（排除 `.env`、`node_modules`、`__pycache__`、`.git`、`venv`）
 - [ ] 验证 `docker-compose up` 一键启动全部服务
 
 ### 2. Nginx 反向代理
@@ -20,6 +23,8 @@
 - [ ] 配置 HTTPS（Let's Encrypt 证书，certbot 自动续期）
 - [ ] 配置 HTTP → HTTPS 强制跳转
 - [ ] 配置安全响应头（X-Frame-Options, X-Content-Type-Options, CSP）
+- [ ] 配置 gzip 压缩（text/html, application/json, application/javascript, text/css）
+- [ ] 静态资源缓存头（`Cache-Control: public, max-age=31536000` for `/_next/static`）
 
 ### 3. Admin 接口鉴权
 - [ ] 新增环境变量 `ADMIN_TOKEN`（管理员密钥）
@@ -44,16 +49,17 @@
 - [ ] 编写备份脚本：每天凌晨 `sqlite3 news.db ".backup backup.db"` + 压缩
 - [ ] 备份文件保留最近 7 天，自动清理旧备份
 - [ ] 备份存储到 volume 或挂载目录（后续可扩展到对象存储）
+- [ ] 备份恢复验证：定期执行 `sqlite3 backup.db "SELECT count(*) FROM news_items"` 确认备份有效
 
 ### 7. 密钥安全
 - [ ] 确认 `backend/.env` 从未被 git 提交（检查 git history）
 - [ ] 如果泄露过，轮换 LLM_API_KEY
 - [ ] `docker-compose.yml` 中通过 `env_file` 加载 `.env`，不硬编码
-- [ ] 添加 `.dockerignore` 排除 `.env`、`node_modules`、`__pycache__` 等
 
 ### 8. 后端健壮性
 - [ ] 添加全局异常处理中间件（捕获未处理异常，返回统一 JSON 错误格式，不暴露堆栈）
 - [ ] 添加请求日志中间件（记录 method、path、status、耗时）
+- [ ] 添加请求 ID 中间件（生成 `X-Request-ID`，便于日志追踪）
 - [ ] 日志级别通过环境变量 `LOG_LEVEL` 配置（默认 INFO）
 
 ### 9. Next.js 生产优化
@@ -71,6 +77,7 @@
 
 ### 11. 监控与告警
 - [ ] 添加 `/api/health` 详细检查（数据库连接、调度器状态）
+- [ ] 添加 `/api/metrics` 端点（Prometheus 格式），便于后续接入 Grafana
 - [ ] 流水线执行失败时发送通知（可选：企业微信/飞书/邮件 webhook）
 - [ ] 记录每日流水线执行结果（成功/失败、文章数量、耗时）
 
@@ -78,28 +85,30 @@
 - [ ] 创建 `.github/workflows/deploy.yml`
 - [ ] Push 到 main 分支时自动：运行测试 → 构建镜像 → 部署到服务器
 - [ ] 配置 SSH 密钥或 deploy key 实现自动部署
+- [ ] 镜像 tag 管理策略（`latest` + git sha），支持快速回滚
 
 ### 13. 流水线重试机制
 - [ ] 流水线失败后自动重试 1 次（间隔 10 分钟）
 - [ ] 重试仍失败则记录错误日志，等待次日定时触发
 
+### 14. 日志优化
+- [ ] 日志格式改为 JSON（便于后续接入日志平台）
+- [ ] 日志持久化到 volume（`/var/log/app`），配置日志轮转（logrotate）
+- [ ] 添加请求 correlation ID 便于追踪（复用 P1 的 `X-Request-ID`）
+
 ---
 
 ## P3 — 后续优化（有空再做）
 
-### 14. 测试补全
+### 15. 测试补全
 - [ ] 补充 fetcher、extractor、summarizer 模块的单元测试
 - [ ] 补充前端基础测试（关键页面渲染、API 调用）
 - [ ] 配置 pytest-cov 生成覆盖率报告
 
-### 15. 数据库迁移
+### 16. 数据库迁移
 - [ ] 初始化 Alembic（`alembic init`）
 - [ ] 为现有表结构生成初始迁移脚本
 - [ ] 后续表结构变更通过 `alembic revision` 管理
-
-### 16. 日志优化
-- [ ] 日志格式改为 JSON（便于后续接入日志平台）
-- [ ] 添加请求 correlation ID 便于追踪
 
 ### 17. RSSHub 自建实例
 - [ ] docker-compose 中添加 RSSHub 服务
@@ -128,8 +137,17 @@
     │ FastAPI │ → SQLite (volume 持久化)
     │ + 调度器 │ → 海外 RSS 源 (直连或代理)
     │         │ → LLM API (DeepSeek)
+    │         │ → 日志 (volume 持久化)
     └─────────┘
 ```
+
+### 容器资源限制（2G 内存服务器）
+
+| 容器 | 内存限制 | CPU 限制 | 说明 |
+|------|----------|----------|------|
+| nginx | 128M | 0.5 | 反代轻量 |
+| nextjs | 512M | 1.0 | SSR 较吃内存 |
+| fastapi | 1.0G | 1.0 | LLM 调用 + 调度器 |
 
 ## 云服务器推荐
 
