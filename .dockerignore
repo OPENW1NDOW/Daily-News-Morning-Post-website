@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+docs/
+
+# Development files
+.claude/
+tasks/
+.vscode/
+.idea/
+
+# Python
+backend/venv/
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Data (will use volumes)
+backend/data/*.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+
+# Logs
+backend/logs/
+
+# Environment
+.env
+*.env
+.env.local
+
+# System
+.DS_Store
+Thumbs.db

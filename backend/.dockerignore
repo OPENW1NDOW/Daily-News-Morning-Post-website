@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.env
+logs/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+tests/
+requirements-dev.txt
