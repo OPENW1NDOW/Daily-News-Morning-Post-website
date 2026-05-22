@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## System Requirements
 
-Python 3.11+, Node.js 18+, npm 9+. Local HTTP proxy needed for overseas RSS sources.
+Python 3.11+, Node.js 18+, npm 9+, Docker. Local HTTP proxy needed for overseas RSS sources.
 
 ## Commands
 
@@ -23,6 +23,15 @@ python -m app.scripts.probe_sources [--proxy] # test RSS source reachability
 ```bash
 npm run dev    # dev server on 0.0.0.0:3000
 npm run build  # production build
+```
+
+### Docker (from project root)
+```bash
+docker-compose up -d                    # start all services
+docker-compose up --build -d            # rebuild and start
+docker-compose down                     # stop all services
+docker logs news-backend -f             # view backend logs
+docker ps                               # check container status
 ```
 
 ## Architecture
@@ -46,8 +55,16 @@ Pipeline runs daily at 08:00 Asia/Shanghai via APScheduler. Manual trigger: `POS
 ### Frontend-Backend Connection
 
 - Dev: Next.js rewrites `/api/*` → `http://127.0.0.1:8000/api/*` (in `next.config.ts`)
-- Production: set `NEXT_PUBLIC_API_URL` env var
+- Production (Docker): Nginx reverse proxy, `/api/*` → `backend:8000`
 - `app/page.tsx` is a client component — auto-triggers pipeline if today's data is empty, polls status every 5s
+
+### Production Deployment
+
+- Server: Tencent Cloud Lightweight (Beijing), 4核4GB, IP: 82.156.105.34
+- Access: http://82.156.105.34
+- Docker Compose: `backend` + `frontend` + `nginx` containers
+- Data persistence: Docker volumes (`sqlite-data`, `backend-logs`)
+- No proxy configured: overseas RSS sources may fail
 
 ### Database
 
@@ -84,3 +101,5 @@ SQLite (WAL mode), 4 tables: `sources`, `raw_articles`, `news_items`, `favorites
 - **Overseas RSS sources** require `PROXY_URL` in `.env` (default `http://127.0.0.1:7897`)
 - **LLM provider**: OpenAI SDK pointed at DeepSeek-compatible endpoint. Default model: `deepseek-chat`
 - **No DB migrations**: schema changes require dropping the SQLite file or manual Alembic migration
+- **Docker healthcheck**: use `127.0.0.1` not `localhost` (IPv6 issue)
+- **BuildKit issue**: use `DOCKER_BUILDKIT=0` if BuildKit fails to pull images
