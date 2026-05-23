@@ -1,6 +1,12 @@
 # 每日新闻早报网站
 
-每天 8:00 自动从 37 个 RSS 源拉取新闻，由 AI 大模型完成筛选、分类、摘要、观点提取和背景补充，按 8 个板块每板块 6 条呈现。前端为简洁的卡片信息流。
+每天 8:00 自动从 37 个 RSS 源拉取新闻，由 AI 大模型完成筛选、分类、摘要、观点提取和背景补充，按 8 个板块每板块 6 条呈现。支持多用户注册登录，每人独立收藏夹。
+
+---
+
+## 在线访问
+
+http://82.156.105.34
 
 ---
 
@@ -84,6 +90,64 @@ npm run dev
 浏览器打开 `http://localhost:3000`。
 
 > **跨设备访问：** 同一局域网下，手机/平板访问 `http://你电脑IP:3000` 即可使用。
+
+---
+
+## Docker 部署
+
+```bash
+# 构建并启动
+docker-compose up -d --build
+
+# 查看状态
+docker ps
+
+# 查看日志
+docker logs news-backend -f
+```
+
+### 服务器部署
+
+```bash
+# 首次部署
+git clone https://github.com/OPENW1NDOW/Daily-News-Morning-Post-website.git /opt/news-website
+cd /opt/news-website
+# 配置 .env 后启动
+docker-compose up -d --build
+
+# 后续更新
+cd /opt/news-website
+git pull origin main
+docker-compose up -d --build
+```
+
+### 服务器代理配置
+
+服务器需要代理访问海外 RSS 源。推荐使用 mihomo（Clash Meta）：
+
+```bash
+# 安装 mihomo
+mkdir -p /etc/mihomo && cd /etc/mihomo
+wget https://github.com/MetaCubeX/mihomo/releases/download/v1.19.0/mihomo-linux-amd64-v1.19.0.gz -O mihomo.gz
+gunzip mihomo.gz && chmod +x mihomo
+
+# 配置订阅（替换为你的订阅链接）
+wget "你的订阅链接" -O config.yaml
+
+# 启动
+systemctl enable mihomo && systemctl start mihomo
+```
+
+`.env` 中配置：
+```env
+PROXY_URL=http://host.docker.internal:7897
+```
+
+`docker-compose.yml` 中需要添加：
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
 
 ---
 
@@ -186,17 +250,22 @@ GET /api/admin/status
 
 ## API 概览
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/health` | 健康检查 |
-| GET | `/api/categories` | 板块清单（含今日条数） |
-| GET | `/api/news?date=YYYY-MM-DD&category=xxx` | 某日某板块新闻 |
-| GET | `/api/news/{id}` | 新闻详情 |
-| GET | `/api/favorites?page=1` | 收藏列表 |
-| POST | `/api/favorites` | 添加收藏 `{"news_item_id": 1}` |
-| DELETE | `/api/favorites/{news_item_id}` | 取消收藏 |
-| POST | `/api/admin/refresh` | 手动触发流水线 |
-| GET | `/api/admin/status` | 流水线运行状态 |
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| GET | `/api/health` | 健康检查 | - |
+| GET | `/api/categories` | 板块清单（含今日条数） | - |
+| GET | `/api/news?date=YYYY-MM-DD&category=xxx` | 某日某板块新闻 | 可选 |
+| GET | `/api/news/{id}` | 新闻详情 | 可选 |
+| POST | `/api/auth/register` | 注册 `{"username", "password"}` | - |
+| POST | `/api/auth/login` | 登录，返回 JWT token | - |
+| GET | `/api/auth/me` | 获取当前用户信息 | 需要 |
+| GET | `/api/favorites?page=1` | 收藏列表 | 需要 |
+| POST | `/api/favorites` | 添加收藏 `{"news_item_id": 1}` | 需要 |
+| DELETE | `/api/favorites/{news_item_id}` | 取消收藏 | 需要 |
+| POST | `/api/admin/refresh` | 手动触发流水线 | - |
+| GET | `/api/admin/status` | 流水线运行状态 | - |
+
+> 需要认证的接口在 Header 中添加：`Authorization: Bearer <token>`
 
 ---
 
@@ -206,6 +275,26 @@ GET /api/admin/status
 cd backend
 pip install pytest httpx
 pytest tests/ -v
+```
+
+---
+
+## 多用户系统
+
+网站支持多用户注册登录，每个用户有独立的收藏夹。
+
+### 功能
+
+- 用户注册/登录（用户名 + 密码）
+- JWT token 认证（7 天有效期）
+- 收藏按用户隔离
+- 未登录可浏览新闻，收藏需登录
+
+### 数据库模型
+
+```
+User (id, username, password_hash, created_at)
+Favorite (id, user_id, news_item_id, favorited_at)
 ```
 
 ---
