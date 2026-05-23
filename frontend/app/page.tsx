@@ -48,7 +48,7 @@ function HomeContent() {
   const loadData = useCallback(async () => {
     if (!refreshing) setNewsStatus("loading")
     try {
-      const cats = await api.getCategories()
+      const cats = await api.getCategories(activeDate)
       setCategories(cats)
 
       const results = await Promise.all(

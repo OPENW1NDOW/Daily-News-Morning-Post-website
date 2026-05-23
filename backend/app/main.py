@@ -53,14 +53,20 @@ def health():
 
 
 @app.get("/api/categories")
-def list_categories(db=Depends(get_db)):
+def list_categories(date: str = None, db=Depends(get_db)):
     from datetime import date as date_type
     from .models import NewsItem
     from sqlalchemy import func
-    today = date_type.today()
+    if date:
+        try:
+            target_date = date_type.fromisoformat(date)
+        except ValueError:
+            target_date = date_type.today()
+    else:
+        target_date = date_type.today()
     counts = dict(
         db.query(NewsItem.category, func.count(NewsItem.id))
-        .filter(NewsItem.date == today)
+        .filter(NewsItem.date == target_date)
         .group_by(NewsItem.category)
         .all()
     )

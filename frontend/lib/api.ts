@@ -12,7 +12,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ ok: boolean }>("/api/health"),
 
-  getCategories: () => request<Category[]>("/api/categories"),
+  getCategories: (date?: string) => {
+    const q = new URLSearchParams()
+    if (date) q.set("date", date)
+    return request<Category[]>(`/api/categories?${q}`)
+  },
 
   getNews: (params: { date?: string; category?: string }) => {
     const q = new URLSearchParams()
