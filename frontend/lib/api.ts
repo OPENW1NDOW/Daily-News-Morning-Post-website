@@ -18,7 +18,14 @@ function authHeaders(init?: RequestInit): RequestInit {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, authHeaders(init))
   if (res.status === 404) return [] as unknown as T
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`
+    try {
+      const body = await res.json()
+      if (body.detail) msg = body.detail
+    } catch {}
+    throw new Error(msg)
+  }
   return res.json() as Promise<T>
 }
 
