@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { api } from "@/lib/api"
+import { isAuthenticated } from "@/lib/auth"
 
 interface Props {
   newsItemId: number
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export function FavoriteButton({ newsItemId, isFavorited, onToggle, size = "md" }: Props) {
+  const router = useRouter()
   const [optimistic, setOptimistic] = useState(isFavorited)
   const [busy, setBusy] = useState(false)
 
@@ -18,6 +21,10 @@ export function FavoriteButton({ newsItemId, isFavorited, onToggle, size = "md" 
 
   async function toggle(e: React.MouseEvent) {
     e.stopPropagation()
+    if (!isAuthenticated()) {
+      router.push("/login")
+      return
+    }
     if (busy) return
     setBusy(true)
     const next = !optimistic

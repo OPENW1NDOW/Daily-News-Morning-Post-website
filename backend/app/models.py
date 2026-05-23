@@ -6,6 +6,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    favorites: Mapped[list["Favorite"]] = relationship(back_populates="user")
+
+
 class Source(Base):
     __tablename__ = "sources"
 
@@ -56,14 +67,17 @@ class NewsItem(Base):
     raw_article_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("raw_articles.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    favorite: Mapped["Favorite | None"] = relationship(back_populates="news_item", uselist=False)
+    favorites: Mapped[list["Favorite"]] = relationship(back_populates="news_item")
 
 
 class Favorite(Base):
     __tablename__ = "favorites"
+    __table_args__ = (UniqueConstraint("user_id", "news_item_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    news_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("news_items.id"), unique=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    news_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("news_items.id"), nullable=False)
     favorited_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    user: Mapped["User"] = relationship(back_populates="favorites")
     news_item: Mapped["NewsItem"] = relationship(back_populates="favorite")

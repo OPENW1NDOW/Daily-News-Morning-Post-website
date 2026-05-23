@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { api } from "@/lib/api"
+import { isAuthenticated } from "@/lib/auth"
 import type { NewsItem, Category } from "@/lib/types"
 import { NewsCard } from "@/components/NewsCard"
 import { NewsDrawer } from "@/components/NewsDrawer"
@@ -11,6 +13,7 @@ import { SamoyedAvatar } from "@/components/SamoyedAvatar"
 import { gradientFor } from "@/components/GradientCover"
 
 export default function FavoritesPage() {
+  const router = useRouter()
   const [items, setItems] = useState<NewsItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [status, setStatus] = useState<"loading" | "ok" | "empty" | "error">("loading")
@@ -21,7 +24,15 @@ export default function FavoritesPage() {
   const [total, setTotal] = useState(0)
   const [activeFilter, setActiveFilter] = useState<string>("all")
 
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      router.push("/login")
+      return
+    }
+  }, [router])
+
   function load(p: number) {
+    if (!isAuthenticated()) return
     setStatus("loading")
     Promise.all([api.getFavorites(p), api.getCategories()])
       .then(([data, cats]) => {

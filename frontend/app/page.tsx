@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { api } from "@/lib/api"
 import { todayStr } from "@/lib/utils"
+import { isAuthenticated, clearToken } from "@/lib/auth"
 import type { NewsItem, Category, PipelineProgress } from "@/lib/types"
 import { NewsDrawer } from "@/components/NewsDrawer"
 import { CategoryTabs } from "@/components/CategoryTabs"
@@ -34,8 +35,16 @@ function HomeContent() {
   const [progress, setProgress] = useState<PipelineProgress | null>(null)
   const [activeTab, setActiveTab] = useState<string>("all")
   const [query, setQuery] = useState("")
+  const [user, setUser] = useState<{ id: number; username: string } | null>(null)
   const autoTriggered = useRef(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 检查登录状态
+  useEffect(() => {
+    if (isAuthenticated()) {
+      api.getMe().then(setUser).catch(() => { clearToken(); setUser(null) })
+    }
+  }, [])
 
   const activeDate = searchParams.get("date") ?? todayStr()
 
@@ -223,6 +232,21 @@ function HomeContent() {
               </svg>
               收藏
             </Link>
+            {user ? (
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] text-[#525252]">{user.username}</span>
+                <button
+                  onClick={() => { clearToken(); setUser(null); router.refresh() }}
+                  className="text-[13px] text-[#A3A3A3] hover:text-[#0F0F0F]"
+                >
+                  退出
+                </button>
+              </div>
+            ) : (
+              <Link href="/login" className="text-[13px] text-[#2563EB] hover:underline">
+                登录
+              </Link>
+            )}
           </div>
         </div>
       </header>

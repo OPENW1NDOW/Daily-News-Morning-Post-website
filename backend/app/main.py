@@ -42,9 +42,11 @@ app.add_middleware(
 from .api.news import router as news_router
 from .api.admin import router as admin_router
 from .api.favorites import router as favorites_router
+from .api.auth import router as auth_router
 app.include_router(news_router)
 app.include_router(admin_router)
 app.include_router(favorites_router)
+app.include_router(auth_router)
 
 
 @app.get("/api/health")
