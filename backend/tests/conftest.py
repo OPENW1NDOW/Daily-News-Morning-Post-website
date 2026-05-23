@@ -54,6 +54,7 @@ def client(monkeypatch):
     # 阻止 lifespan 中对真实数据库的操作
     monkeypatch.setattr("app.main.init_db", lambda: None)
     monkeypatch.setattr("app.main.sync_sources", lambda db: None)
+    monkeypatch.setattr("app.main._bootstrap_admin", lambda db: None)
 
     from app.main import app
     app.dependency_overrides[get_db] = _override_get_db

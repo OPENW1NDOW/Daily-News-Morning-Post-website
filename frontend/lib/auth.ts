@@ -16,3 +16,7 @@ export function clearToken() {
 export function isAuthenticated(): boolean {
   return !!getToken()
 }
+
+export function isAdmin(user: { is_admin?: boolean } | null): boolean {
+  return !!user?.is_admin
+}

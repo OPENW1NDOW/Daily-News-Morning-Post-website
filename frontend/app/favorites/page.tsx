@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { api } from "@/lib/api"
-import { isAuthenticated } from "@/lib/auth"
+import { isAuthenticated, clearToken } from "@/lib/auth"
 import type { NewsItem, Category } from "@/lib/types"
 import { NewsCard } from "@/components/NewsCard"
 import { NewsDrawer } from "@/components/NewsDrawer"
@@ -23,12 +23,14 @@ export default function FavoritesPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [activeFilter, setActiveFilter] = useState<string>("all")
+  const [user, setUser] = useState<{ id: number; username: string; is_admin?: boolean } | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated()) {
       router.push("/login")
       return
     }
+    api.getMe().then(setUser).catch(() => { clearToken(); setUser(null) })
   }, [router])
 
   function load(p: number) {
@@ -87,15 +89,29 @@ export default function FavoritesPage() {
               Cooper 的每日新闻
             </h1>
           </Link>
-          <Link
-            href="/"
-            className="text-[13px] text-[#525252] hover:text-[#0F0F0F] transition-colors flex items-center gap-1.5"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            返回首页
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="text-[13px] text-[#525252] hover:text-[#0F0F0F] transition-colors flex items-center gap-1.5"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              返回首页
+            </Link>
+            {user?.is_admin && (
+              <Link
+                href="/admin"
+                className="text-[13px] text-[#525252] hover:text-[#0F0F0F] transition-colors flex items-center gap-1.5"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                管理
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 

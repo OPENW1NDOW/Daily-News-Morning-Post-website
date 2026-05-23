@@ -12,6 +12,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     favorites: Mapped[list["Favorite"]] = relationship(back_populates="user")
@@ -81,3 +82,15 @@ class Favorite(Base):
 
     user: Mapped["User"] = relationship(back_populates="favorites")
     news_item: Mapped["NewsItem"] = relationship(back_populates="favorites")
+
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    trigger: Mapped[str] = mapped_column(String, default="scheduler")
+    status: Mapped[str] = mapped_column(String, default="running")
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

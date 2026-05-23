@@ -31,3 +31,11 @@ def get_db():
 def init_db():
     from . import models  # noqa: F401 — 触发模型注册
     Base.metadata.create_all(bind=engine)
+    # 安全添加新列（已有则跳过）
+    import sqlalchemy as sa
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # 列已存在

@@ -7,12 +7,23 @@ from .scheduler import start_scheduler, stop_scheduler
 from . import rsshub
 
 
+def _bootstrap_admin(db):
+    """自动将首个用户设为管理员（仅当系统中无管理员时）"""
+    from .models import User
+    if not db.query(User).filter(User.is_admin == True).first():
+        first_user = db.query(User).order_by(User.id).first()
+        if first_user:
+            first_user.is_admin = True
+            db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     db = SessionLocal()
     try:
         sync_sources(db)
+        _bootstrap_admin(db)
     finally:
         db.close()
     start_scheduler()

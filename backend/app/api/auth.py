@@ -33,7 +33,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     token = create_access_token(user.id)
-    return {"token": token, "user": {"id": user.id, "username": user.username}}
+    return {"token": token, "user": {"id": user.id, "username": user.username, "is_admin": user.is_admin}}
 
 
 @router.post("/api/auth/login")
@@ -42,11 +42,11 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "用户名或密码错误")
     token = create_access_token(user.id)
-    return {"token": token, "user": {"id": user.id, "username": user.username}}
+    return {"token": token, "user": {"id": user.id, "username": user.username, "is_admin": user.is_admin}}
 
 
 @router.get("/api/auth/me")
 def me(user: User = Depends(get_current_user)):
     if not user:
         raise HTTPException(401, "未登录")
-    return {"id": user.id, "username": user.username}
+    return {"id": user.id, "username": user.username, "is_admin": user.is_admin}

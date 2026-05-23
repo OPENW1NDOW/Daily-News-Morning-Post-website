@@ -40,14 +40,31 @@ def get_pipeline_progress() -> dict:
         return dict(_pipeline_progress)
 
 
-def run_daily(db) -> dict:
+def run_daily(db, trigger: str = "scheduler") -> dict:
     """
     同步入口，供 scheduler / admin API 调用。
     返回每板块最终写入条数的汇总 dict。
     """
+    from ..models import PipelineRun
+    run_record = PipelineRun(trigger=trigger, status="running")
+    db.add(run_record)
+    db.commit()
+    db.refresh(run_record)
+
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(_run_daily_async(db))
+        counts = loop.run_until_complete(_run_daily_async(db))
+        run_record.status = "success"
+        run_record.result = counts
+        run_record.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        return counts
+    except Exception as e:
+        run_record.status = "error"
+        run_record.error = str(e)[:500]
+        run_record.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise
     finally:
         loop.close()
 

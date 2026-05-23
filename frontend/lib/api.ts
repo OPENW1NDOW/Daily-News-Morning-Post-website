@@ -1,4 +1,8 @@
-import type { NewsItem, Category, AdminStatus } from "./types"
+import type {
+  NewsItem, Category, AdminStatus, UserProfile, AdminDashboard,
+  PipelineRun, SourceDetail, AdminUser, CategoryConfig, SystemSettings, AdminNewsItem,
+  PipelineProgress,
+} from "./types"
 import { getToken } from "./auth"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -23,20 +27,20 @@ export const api = {
 
   // 认证
   register: (username: string, password: string) =>
-    request<{ token: string; user: { id: number; username: string } }>("/api/auth/register", {
+    request<{ token: string; user: { id: number; username: string; is_admin: boolean } }>("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     }),
 
   login: (username: string, password: string) =>
-    request<{ token: string; user: { id: number; username: string } }>("/api/auth/login", {
+    request<{ token: string; user: { id: number; username: string; is_admin: boolean } }>("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     }),
 
-  getMe: () => request<{ id: number; username: string }>("/api/auth/me"),
+  getMe: () => request<{ id: number; username: string; is_admin: boolean }>("/api/auth/me"),
 
   // 新闻
   getCategories: (date?: string) => {
@@ -73,4 +77,63 @@ export const api = {
 
   triggerRefresh: () =>
     request<{ status: string; message: string }>("/api/admin/refresh", { method: "POST" }),
+
+  // ── Admin API ──
+
+  // 仪表盘
+  adminDashboard: () => request<AdminDashboard>("/api/admin/dashboard"),
+
+  // 流水线
+  adminTriggerPipeline: () =>
+    request<{ status: string; message: string }>("/api/admin/pipeline/trigger", { method: "POST" }),
+  adminPipelineStatus: () =>
+    request<{ pipeline_running: boolean; progress: PipelineProgress | null; last_run: Record<string, unknown> | null }>("/api/admin/pipeline/status"),
+  adminPipelineHistory: (page = 1) =>
+    request<{ items: PipelineRun[]; total: number; page: number; pages: number }>(`/api/admin/pipeline/history?page=${page}`),
+
+  // 数据源
+  adminSources: () => request<SourceDetail[]>("/api/admin/sources"),
+  adminUpdateSource: (id: number, data: Partial<SourceDetail>) =>
+    request<SourceDetail>(`/api/admin/sources/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  adminTestSource: (id: number) =>
+    request<{ ok: boolean; status: number | null; error: string | null }>(`/api/admin/sources/${id}/test`, { method: "POST" }),
+
+  // 新闻管理
+  adminNews: (params: { date?: string; category?: string; page?: number }) => {
+    const q = new URLSearchParams()
+    if (params.date) q.set("date_str", params.date)
+    if (params.category) q.set("category", params.category)
+    if (params.page) q.set("page", String(params.page))
+    return request<{ items: AdminNewsItem[]; total: number; page: number; pages: number }>(`/api/admin/news?${q}`)
+  },
+  adminGetNews: (id: number) => request<NewsItem>(`/api/admin/news/${id}`),
+  adminUpdateNews: (id: number, data: Partial<NewsItem>) =>
+    request<NewsItem>(`/api/admin/news/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  adminDeleteNews: (id: number) =>
+    request<{ ok: boolean }>(`/api/admin/news/${id}`, { method: "DELETE" }),
+
+  // 用户管理
+  adminUsers: () => request<AdminUser[]>("/api/admin/users"),
+  adminToggleAdmin: (userId: number, isAdmin: boolean) =>
+    request<{ ok: boolean }>(`/api/admin/users/${userId}/admin`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_admin: isAdmin }),
+    }),
+
+  // 板块管理
+  adminCategories: () => request<CategoryConfig[]>("/api/admin/categories"),
+  adminUpdateCategory: (key: string, data: Partial<CategoryConfig>) =>
+    request<CategoryConfig>(`/api/admin/categories/${key}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+
+  // 系统设置
+  adminSettings: () => request<SystemSettings>("/api/admin/settings"),
+  adminUpdateSettings: (data: Partial<SystemSettings>) =>
+    request<{ message: string }>("/api/admin/settings", {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
 }

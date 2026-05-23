@@ -17,7 +17,7 @@ pytest tests/test_fetcher.py::test_fn -k keyword  # single test or by keyword
 python -m app.scripts.probe_sources [--proxy] # test RSS source reachability
 ```
 
-> If `uvicorn` can't find modules, run from `backend/` dir or set `PYTHONPATH=.` first.
+> If `uvicorn` can't find modules, run from `backend/` dir or set `PYTHONPATH=.` first. Same applies to `pytest`.
 
 ### Frontend (from `frontend/`)
 ```bash
@@ -68,7 +68,7 @@ Pipeline runs daily at 08:00 Asia/Shanghai via APScheduler. Manual trigger: `POS
 
 ### Database
 
-SQLite (WAL mode), 4 tables: `sources`, `raw_articles`, `news_items`, `favorites`. Schema auto-created via SQLAlchemy `create_all` on startup — no migration files.
+SQLite (WAL mode), 5 tables: `users`, `sources`, `raw_articles`, `news_items`, `favorites`. Schema auto-created via SQLAlchemy `create_all` on startup — no migration files.
 
 ### Config Files
 
@@ -94,6 +94,10 @@ SQLite (WAL mode), 4 tables: `sources`, `raw_articles`, `news_items`, `favorites
 - "重要任务" = 任何改变项目行为或结构的工作（新功能、修复、重构、配置变更）
 - 不需要提醒的：纯探索性阅读代码、回答问题、讨论方案（未落地）
 
+## Test Pattern
+
+Tests use in-memory SQLite (`StaticPool`) and monkeypatch `start_scheduler`/`stop_scheduler`/`init_db`/`sync_sources` to isolate from real DB and scheduler. See `backend/tests/conftest.py`. The `make_news` fixture is a factory for inserting `NewsItem` rows.
+
 ## Gotchas
 
 - **Next.js 16 breaking changes**: read `node_modules/next/dist/docs/` before modifying routing or config
@@ -103,3 +107,5 @@ SQLite (WAL mode), 4 tables: `sources`, `raw_articles`, `news_items`, `favorites
 - **No DB migrations**: schema changes require dropping the SQLite file or manual Alembic migration
 - **Docker healthcheck**: use `127.0.0.1` not `localhost` (IPv6 issue)
 - **BuildKit issue**: use `DOCKER_BUILDKIT=0` if BuildKit fails to pull images
+- **JWT secret hardcoded** in `app/api/deps.py` — fine for dev, must change before production exposure
+- **Admin endpoints unprotected**: `/api/admin/refresh` and `/api/admin/status` have no auth — anyone can trigger pipeline
