@@ -73,3 +73,50 @@
 - **相关文件**: ...
 - **遗留问题**: ...
 -->
+
+---
+
+## 2026-05-23 — 管理后台功能开发
+
+### 做了什么
+完整的管理后台系统，包含角色鉴权和 7 个管理模块。
+
+**后端（8 个文件修改）：**
+- `User` 模型新增 `is_admin` 字段，`init_db()` 安全 ALTER TABLE 迁移
+- 新增 `PipelineRun` 模型记录流水线运行历史
+- `require_admin` 鉴权中间件，`/api/auth/me` 返回 `is_admin`
+- `admin.py` 完整重写：17 个带鉴权端点（仪表盘、流水线触发/状态/历史、数据源 CRUD/测试、新闻浏览/编辑/删除、用户角色管理、板块编辑、系统设置）
+- 保留旧 `/api/admin/refresh` 和 `/api/admin/status` 无鉴权端点兼容首页
+
+**前端（9 个新文件 + 4 个修改）：**
+- `/admin` 页面：侧边栏 + 7 个 tab 组件
+- 仪表盘：统计卡片、分类分布柱状图、最近流水线、系统信息
+- 流水线：手动触发、实时进度条（3s 轮询）、运行历史表
+- 数据源：列表、启用/代理开关、测试连通性、编辑名称/URL + 同步回 YAML
+- 新闻管理：日期/板块筛选、分页、编辑弹窗、删除确认
+- 用户管理：列表、管理员切换、防自我降权
+- 板块管理：内联编辑名称和描述 + 同步回 YAML
+- 系统设置：LLM 配置（脱敏 API Key）、代理地址、健康检查
+- 首页和收藏页 header 新增管理员入口链接
+
+### 为什么
+网站缺少管理界面，之前只能手动编辑 YAML 文件和重启服务来管理数据源/分类。
+
+### 关键决策
+- 单页 sidebar tabs 而非子路由，匹配现有项目模式
+- `is_admin` 迁移用安全 ALTER TABLE + 首个用户自动提权，无需手动操作
+- 保留旧 admin 端点不加鉴权，避免破坏首页自动触发逻辑
+- 测试 conftest 新增 `_bootstrap_admin` monkeypatch
+
+### 相关文件
+- `backend/app/models.py` — is_admin + PipelineRun
+- `backend/app/api/admin.py` — 17 个管理端点
+- `backend/app/api/deps.py` — require_admin
+- `frontend/app/admin/page.tsx` — 管理后台主页
+- `frontend/components/admin/*.tsx` — 7 个 tab 组件
+- `frontend/lib/types.ts`, `frontend/lib/api.ts` — 类型和 API 客户端
+
+### 遗留问题
+- 收藏相关测试（8 个）缺少 auth headers，是预先存在的问题，非本次引入
+- 系统设置写入 `.env` 后需重启服务才生效，无热更新
+- `news-website.tar.gz` 和 `setup_proxy.sh` 未提交（不属于功能代码）
