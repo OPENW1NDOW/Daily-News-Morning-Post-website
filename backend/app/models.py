@@ -80,4 +80,4 @@ class Favorite(Base):
     favorited_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship(back_populates="favorites")
-    news_item: Mapped["NewsItem"] = relationship(back_populates="favorite")
+    news_item: Mapped["NewsItem"] = relationship(back_populates="favorites")
