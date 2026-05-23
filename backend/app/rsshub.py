@@ -31,7 +31,11 @@ def _resolve_rsshub_dir() -> str:
         return settings.rsshub_dir
     # 默认：与项目同级的 rsshub 目录（backend/../../rsshub）
     from pathlib import Path
-    return str(Path(__file__).resolve().parents[3] / "rsshub")
+    try:
+        return str(Path(__file__).resolve().parents[3] / "rsshub")
+    except IndexError:
+        # Docker 容器内路径较短，无法推算
+        return ""
 
 
 def _cleanup():
