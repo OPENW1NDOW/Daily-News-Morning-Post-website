@@ -52,7 +52,7 @@ sources:
     name: Hugging Face Papers
     url: ${RSSHUB_BASE_URL}/huggingface/daily-papers
     use_proxy: false
-    enabled: true
+    enabled: false  # RSSHub 路由不可用
 
   - key: qbitai
     name: 量子位
@@ -126,7 +126,7 @@ sources:
     name: Hacker News
     url: ${RSSHUB_BASE_URL}/hackernews/best
     use_proxy: false
-    enabled: true
+    enabled: false  # RSSHub 路由不可用
 
   # ── 互联网 ───────────────────────────────────────────────
   - key: pingwest
@@ -189,7 +189,7 @@ sources:
     name: 虎嗅
     url: https://www.huxiu.com/rss/
     use_proxy: false
-    enabled: true
+    enabled: false  # RSS 地址 404 失效
 
   - key: caixin
     name: 财新
