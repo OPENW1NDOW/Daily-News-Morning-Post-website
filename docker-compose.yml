@@ -61,6 +61,23 @@ services:
     networks:
       - app-network
 
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: news-rsshub
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - CACHE_TYPE=memory
+      - REQUEST_TIMEOUT=10000
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:1200/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - app-network
+
   nginx:
     image: nginx:alpine
     container_name: news-nginx
