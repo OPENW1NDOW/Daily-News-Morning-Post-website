@@ -4,38 +4,58 @@
 
 这是一个自动化的每日新闻聚合系统，从全球 RSS 源抓取新闻，通过 AI 进行分类和摘要，为用户提供按板块整理的新闻早报。
 
+### 技术栈
+
+- **前端**：Next.js 16 + shadcn/ui 4.7（base-nova 风格）
+- **后端**：FastAPI + SQLAlchemy + SQLite（WAL 模式）
+- **AI**：mimo-v2.5-pro（通过 OpenAI SDK 兼容接口）
+- **RSSHub**：独立 Docker 容器，提供知乎、同花顺、财新等国内平台的 RSS
+- **部署**：Docker Compose（backend + frontend + nginx + rsshub），腾讯云北京 4 核 4GB
+- **定时调度**：APScheduler，每天北京时间 08:00 自动触发
+
 ### 技术架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          用户浏览器                              │
-│                     http://localhost:3000                        │
+│                     http://82.156.105.34                         │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Next.js 前端                               │
-│            轮询 /api/admin/status 获取进度                       │
+│                        Nginx 反向代理                            │
+│                   80 端口 → 前端 / 后端                          │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                      FastAPI 后端                               │
-│                   http://localhost:8000                          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                     流水线（7 步流程）                            │
-│   fetch → filter → classify → select → extract → summarize → persist
-└─────────────────────────────────────────────────────────────────┘
+                    ┌─────────┴─────────┐
+                    ↓                   ↓
+        ┌───────────────────┐   ┌───────────────────┐
+        │   Next.js 前端    │   │   FastAPI 后端     │
+        │    :3000          │   │    :8000           │
+        └───────────────────┘   └───────────────────┘
+                                        │
+                                        ↓
+                        ┌───────────────────────────────┐
+                        │       流水线（7 步流程）        │
+                        │ fetch → filter → classify →   │
+                        │ select → extract → summarize  │
+                        │ → persist                     │
+                        └───────────────────────────────┘
                               │
               ┌───────────────┼───────────────┐
               ↓               ↓               ↓
         ┌─────────┐     ┌─────────┐     ┌─────────┐
         │ RSS 源  │     │  LLM   │     │ SQLite  │
-        │ (37个)  │     │DeepSeek│     │  数据库  │
+        │ (37个)  │     │  mimo  │     │  数据库  │
         └─────────┘     └─────────┘     └─────────┘
+              ↑
+              │ RSSHub 源
+              ↓
+        ┌───────────────┐
+        │  RSSHub 容器   │
+        │  :1200        │
+        │ (知乎/同花顺/  │
+        │  财新等)       │
+        └───────────────┘
 ```
 
 ---
@@ -56,39 +76,34 @@ RSS抓取  →  日期过滤  →  AI分类   →  选择Top-8 →  全文提取
 
 ### 目标
 
-从 37 个 RSS 源拉取最近 24 小时的文章。
+从 37 个 RSS 源（31 个启用）拉取最近 24 小时的文章。
 
 ### 输入
 
-数据库中所有 `enabled=True` 的 RSS 源：
+数据库中所有 `enabled=True` 的 RSS 源（`backend/config/sources.yaml`）：
 
-```yaml
-# backend/config/sources.yaml 示例
-- name: "36氪"
-  url: "https://36kr.com/feed"
-  use_proxy: false
-  enabled: true
-
-- name: "TechCrunch AI"
-  url: "https://techcrunch.com/category/artificial-intelligence/feed/"
-  use_proxy: true
-  enabled: true
-```
+| 类型 | 数量 | 网络 | 说明 |
+|------|------|------|------|
+| 国内直连源 | 14 | 直连 | 36氪、机器之心、财联社等 |
+| 海外代理源 | 13 | 走代理 | TechCrunch、BBC、Bloomberg 等 |
+| RSSHub 源 | 4 | Docker 内网 | 知乎热榜、同花顺、财新等，由独立 RSSHub 容器提供 |
+| 已禁用 | 6 | — | 路由不可用、RSS 失效、反爬等 |
 
 ### 处理过程
 
 ```
-37 个 RSS 源
+31 个启用的 RSS 源
     │
     ↓ 异步并发抓取（semaphore=10，最多 10 个并发）
     │
-    ├─→ 36kr/feed → 解析 RSS → 提取 25 篇
-    ├─→ techcrunch/feed → 解析 RSS → 提取 20 篇
-    ├─→ arxiv/cs.AI → 解析 RSS → 提取 480 篇
+    ├─→ 36kr/feed ─────────────→ 直连 → 解析 RSS → 提取 25 篇
+    ├─→ techcrunch/feed ───────→ 走代理 → 解析 RSS → 提取 20 篇
+    ├─→ arxiv/cs.AI ───────────→ 走代理 → 解析 RSS → 提取 480 篇
+    ├─→ rsshub:1200/zhihu/hot ─→ Docker 内网 → 解析 RSS → 提取 50 篇
     ├─→ ...
-    └─→ bbc/news → 解析 RSS → 提取 36 篇
+    └─→ bbc/news ──────────────→ 走代理 → 解析 RSS → 提取 36 篇
     │
-    ↓ 去重（基于 source_id + guid）
+    ↓ 去重（基于 link 和 source_id + guid）
     │
     ↓ 保存到 raw_articles 表
 ```
@@ -195,10 +210,10 @@ candidates = raw_articles WHERE published_at >= day_start AND published_at < day
     │
     ↓ 分批（每批 60 条）
     │
-    ├─→ 批次1: 60条 → 调用 LLM → 返回分类结果
-    ├─→ 批次2: 60条 → 调用 LLM → 返回分类结果
+    ├─→ 批次1: 60条 → 调用 mimo-v2.5-pro → 返回分类结果
+    ├─→ 批次2: 60条 → 调用 mimo-v2.5-pro → 返回分类结果
     ├─→ ...
-    └─→ 批次N: 60条 → 调用 LLM → 返回分类结果
+    └─→ 批次N: 60条 → 调用 mimo-v2.5-pro → 返回分类结果
     │
     ↓ 更新数据库中的 category 和 importance 字段
 ```
@@ -500,10 +515,10 @@ for cat, pool in category_pools.items():
 
 | 步骤 | 瓶颈类型 | 原因 |
 |------|----------|------|
-| AI 分类 | LLM API 调用 | 并发 5 线程，每批 60 条 |
-| AI 摘要 | LLM API 调用 | 并发 5 线程，每篇单独调用 |
-| RSS 抓取 | 网络延迟 | 已是并发，受限于源服务器响应 |
-| 全文提取 | 网络请求 | 已是并发，部分网站 403 拒绝 |
+| AI 分类 | LLM API 调用 | 并发 5 线程，每批 60 条，调用 mimo-v2.5-pro |
+| AI 摘要 | LLM API 调用 | 并发 5 线程，每篇单独调用 mimo-v2.5-pro |
+| RSS 抓取 | 网络延迟 | semaphore=10 并发，受限于源服务器响应 |
+| 全文提取 | 网络请求 | 逐篇提取，部分网站 403 拒绝 |
 
 ---
 
@@ -514,15 +529,15 @@ for cat, pool in category_pools.items():
 ```env
 # LLM 配置
 LLM_API_KEY=your-api-key
-LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-chat
+LLM_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1
+LLM_MODEL=mimo-v2.5-pro
 
-# 代理配置（用于海外 RSS 源）
-PROXY_URL=http://127.0.0.1:7897
+# 代理配置（用于海外 RSS 源，Docker 内通过 host.docker.internal 访问宿主机）
+PROXY_URL=http://host.docker.internal:7897
 
-# RSSHub（本地自建实例，提供无原生 RSS 的平台源）
-RSSHUB_BASE_URL=http://localhost:1200
-RSSHUB_AUTO_START=true
+# RSSHub（独立 Docker 容器，Docker 内部网络访问）
+RSSHUB_BASE_URL=http://rsshub:1200
+RSSHUB_AUTO_START=false
 
 # 数据库
 DATABASE_URL=sqlite:///./data/news.db
@@ -545,7 +560,7 @@ DATABASE_URL=sqlite:///./data/news.db
   use_proxy: true
   enabled: true
 
-# RSSHub 源（本地实例提供）
+# RSSHub 源（独立容器提供，${RSSHUB_BASE_URL} 运行时替换）
 - key: zhihu_hot
   name: "知乎热榜"
   url: "${RSSHUB_BASE_URL}/zhihu/hot"
@@ -558,6 +573,17 @@ DATABASE_URL=sqlite:///./data/news.db
 定义 8 个板块的名称和描述，需与代码中的 `CATEGORIES` 列表保持同步。
 
 ---
+
+## 触发方式
+
+| 方式 | 说明 |
+|------|------|
+| **定时触发** | APScheduler，每天北京时间 08:00 自动执行 |
+| **前端兜底** | 用户访问首页时，若当天数据为空，自动触发流水线 |
+| **手动触发** | 前端"立即抓取"按钮，或 `POST /api/admin/refresh` |
+| **Admin 面板** | 管理后台流水线控制页面触发（需管理员登录） |
+
+> **注意**：APScheduler 运行在 FastAPI 的 async 事件循环中，调度回调直接 `await` 异步函数，避免嵌套事件循环问题。
 
 ## API 接口
 
@@ -600,28 +626,75 @@ GET /api/categories
 
 ---
 
+## Docker 部署
+
+### 容器组成
+
+| 容器 | 镜像 | 端口 | 说明 |
+|------|------|------|------|
+| news-backend | python:3.11-slim | 8000 | FastAPI 后端 |
+| news-frontend | node:20-alpine | 3000 | Next.js 前端 |
+| news-nginx | nginx:alpine | 80 | 反向代理 |
+| news-rsshub | diygod/rsshub | 1200 | RSSHub 实例（Docker 内网） |
+
+### 数据持久化
+
+- `sqlite-data` volume → SQLite 数据库文件
+- `backend-logs` volume → 后端日志
+
+### 常用命令
+
+```bash
+docker-compose up -d                  # 启动所有服务
+docker-compose up --build -d          # 重新构建并启动
+docker-compose down                   # 停止所有服务
+docker logs news-backend -f           # 查看后端日志
+docker exec news-backend python -m app.scripts.probe_sources  # 测试 RSS 源连通性
+```
+
+### 服务器信息
+
+- **IP**：82.156.105.34（腾讯云北京 4 核 4GB）
+- **访问**：http://82.156.105.34
+- **项目路径**：`/opt/news-website`
+
+---
+
 ## 文件结构
 
 ```
-backend/
-├── app/
-│   ├── api/
-│   │   ├── admin.py          # 管理 API
-│   │   ├── news.py           # 新闻 API
-│   │   └── favorites.py      # 收藏 API
-│   ├── pipeline/
-│   │   ├── fetcher.py        # 步骤1: RSS 抓取
-│   │   ├── classifier.py     # 步骤3: AI 分类
-│   │   ├── extractor.py      # 步骤5: 全文提取
-│   │   ├── summarizer.py     # 步骤6: AI 摘要
-│   │   ├── orchestrator.py   # 流程编排
-│   │   └── sync_sources.py   # 源同步
-│   ├── rsshub.py             # RSSHub 生命周期管理
-│   ├── models.py             # 数据库模型
-│   ├── config.py             # 配置加载
-│   └── scheduler.py          # 定时任务
-├── config/
-│   ├── sources.yaml          # RSS 源配置
-│   └── categories.yaml       # 分类配置
-└── .env                      # 环境变量
+├── docker-compose.yml          # 容器编排（backend + frontend + nginx + rsshub）
+├── nginx/nginx.conf            # Nginx 反向代理配置
+├── backend/
+│   ├── Dockerfile
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── admin.py          # 管理 API
+│   │   │   ├── news.py           # 新闻 API
+│   │   │   ├── favorites.py      # 收藏 API
+│   │   │   ├── auth.py           # 认证 API
+│   │   │   └── deps.py           # JWT 依赖注入
+│   │   ├── pipeline/
+│   │   │   ├── fetcher.py        # 步骤1: RSS 抓取
+│   │   │   ├── classifier.py     # 步骤3: AI 分类
+│   │   │   ├── extractor.py      # 步骤5: 全文提取
+│   │   │   ├── summarizer.py     # 步骤6: AI 摘要
+│   │   │   ├── orchestrator.py   # 流程编排
+│   │   │   └── sync_sources.py   # 源同步（启动时 YAML → DB）
+│   │   ├── rsshub.py             # RSSHub 生命周期管理（已弃用，改用独立容器）
+│   │   ├── models.py             # 数据库模型
+│   │   ├── config.py             # 配置加载（pydantic-settings）
+│   │   ├── scheduler.py          # APScheduler 定时任务
+│   │   └── main.py               # FastAPI 入口
+│   ├── config/
+│   │   ├── sources.yaml          # RSS 源配置（37 个源）
+│   │   └── categories.yaml       # 板块配置（8 个板块）
+│   ├── tests/                    # 31 个测试
+│   └── .env                      # 环境变量（不入库）
+├── frontend/
+│   ├── Dockerfile
+│   ├── app/                      # Next.js 16 页面
+│   └── components/               # React 组件
+└── docs/
+    └── workflow.md               # 本文档
 ```
