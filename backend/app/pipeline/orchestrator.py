@@ -42,39 +42,23 @@ def get_pipeline_progress() -> dict:
 
 def run_daily(db, trigger: str = "scheduler") -> dict:
     """
-    同步入口，供 scheduler / admin API 调用。
+    同步入口，供 admin API（在线程池中调用，无运行中的事件循环）使用。
     返回每板块最终写入条数的汇总 dict。
     """
-    from ..models import PipelineRun
-    run_record = PipelineRun(trigger=trigger, status="running")
-    db.add(run_record)
-    db.commit()
-    db.refresh(run_record)
-
-    loop = asyncio.new_event_loop()
-    try:
-        counts = loop.run_until_complete(_run_daily_async(db))
-        run_record.status = "success"
-        run_record.result = counts
-        run_record.finished_at = datetime.now(timezone.utc)
-        db.commit()
-        return counts
-    except Exception as e:
-        run_record.status = "error"
-        run_record.error = str(e)[:500]
-        run_record.finished_at = datetime.now(timezone.utc)
-        db.commit()
-        raise
-    finally:
-        loop.close()
+    return asyncio.run(_run_daily_async(db, trigger=trigger))
 
 
-async def _run_daily_async(db) -> dict:
-    from ..models import Source, RawArticle, NewsItem
+async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
+    from ..models import Source, RawArticle, NewsItem, PipelineRun
     from .fetcher import fetch_and_save_all_async
     from .classifier import classify_articles
     from .extractor import extract_text
     from .summarizer import summarize
+
+    run_record = PipelineRun(trigger=trigger, status="running")
+    db.add(run_record)
+    db.commit()
+    db.refresh(run_record)
 
     now_cst = datetime.now(CST)
     # 8 点前算前一天，8 点后算当天
@@ -112,6 +96,10 @@ async def _run_daily_async(db) -> dict:
 
         if not candidates:
             logger.warning("无候选文章，流水线结束")
+            run_record.status = "success"
+            run_record.result = {}
+            run_record.finished_at = datetime.now(timezone.utc)
+            db.commit()
             return {}
 
         # ── Step 3: AI 分类 + 重要度 ───────────────────────────
@@ -217,6 +205,16 @@ async def _run_daily_async(db) -> dict:
         total = sum(final_counts.values())
         logger.info(f"===== 流水线完成：{target_date}，共 {total} 条 =====")
         _update_progress(step=f"完成，共 {total} 条新闻")
+        run_record.status = "success"
+        run_record.result = final_counts
+        run_record.finished_at = datetime.now(timezone.utc)
+        db.commit()
         return final_counts
+    except Exception as e:
+        run_record.status = "error"
+        run_record.error = str(e)[:500]
+        run_record.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise
     finally:
         _update_progress(running=False)

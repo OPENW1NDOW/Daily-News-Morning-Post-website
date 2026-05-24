@@ -12,13 +12,13 @@ scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 
 async def _run_pipeline_job():
     from .db import SessionLocal
-    from .pipeline.orchestrator import run_daily
+    from .pipeline.orchestrator import _run_daily_async
     from . import rsshub
     logger.info("调度触发：开始执行每日流水线")
     rsshub.start()
     db = SessionLocal()
     try:
-        counts = run_daily(db)
+        counts = await _run_daily_async(db, trigger="scheduler")
         logger.info(f"调度完成：{counts}")
     except Exception as e:
         logger.error(f"调度执行失败: {e}", exc_info=True)
