@@ -97,7 +97,7 @@ export default function AdminDashboard() {
               </div>
               <div className="flex justify-between text-[13px]">
                 <span className="text-[#737373]">开始时间</span>
-                <span className="text-[#0F0F0F]">{data.latest_pipeline.started_at ? new Date(data.latest_pipeline.started_at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</span>
+                <span className="text-[#0F0F0F]">{data.latest_pipeline.started_at ? new Date(data.latest_pipeline.started_at + "Z").toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</span>
               </div>
               {data.latest_pipeline.result && (
                 <div className="flex justify-between text-[13px]">

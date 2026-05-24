@@ -147,7 +147,7 @@ export default function PipelineControl() {
                     const total = r.result ? Object.values(r.result).reduce((a, b) => a + b, 0) : null
                     return (
                       <tr key={r.id} className="border-b border-[#F5F5F4]">
-                        <td className="py-2 text-[#525252]">{r.started_at ? new Date(r.started_at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</td>
+                        <td className="py-2 text-[#525252]">{r.started_at ? new Date(r.started_at + "Z").toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</td>
                         <td className="py-2 text-[#525252]">{r.trigger === "manual" ? "手动" : "定时"}</td>
                         <td className="py-2">
                           <span className={`px-2 py-0.5 rounded-full text-[12px] font-medium ${STATUS_MAP[r.status]?.color ?? "text-gray-600 bg-gray-50"}`}>

@@ -77,7 +77,7 @@ export default function UserManager() {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-center text-[#525252]">{u.favorite_count}</td>
-                  <td className="px-4 py-2.5 text-[#737373]">{u.created_at ? new Date(u.created_at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</td>
+                  <td className="px-4 py-2.5 text-[#737373]">{u.created_at ? new Date(u.created_at + "Z").toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</td>
                   <td className="px-4 py-2.5 text-center">
                     <button
                       onClick={() => toggleAdmin(u.id, u.is_admin)}
