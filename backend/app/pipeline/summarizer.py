@@ -41,23 +41,27 @@ JSON 格式：
 - 全部使用中文"""
 
 
-def _extract_json(text: str):
-    """从 LLM 响应中提取 JSON，处理 markdown 代码块和额外文本。"""
+def _extract_json(text: str) -> dict | None:
+    """从 LLM 响应中提取 JSON 对象，处理 markdown 代码块和额外文本。"""
+    def _try_parse(s):
+        obj = json.loads(s)
+        return obj if isinstance(obj, dict) else None
+
     try:
-        return json.loads(text)
+        return _try_parse(text)
     except json.JSONDecodeError:
         pass
     m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
     if m:
         try:
-            return json.loads(m.group(1).strip())
+            return _try_parse(m.group(1).strip())
         except json.JSONDecodeError:
             pass
-    for pattern in [r"\[.*\]", r"\{.*\}"]:
+    for pattern in [r"\{.*\}", r"\[.*\]"]:
         m = re.search(pattern, text, re.DOTALL)
         if m:
             try:
-                return json.loads(m.group())
+                return _try_parse(m.group())
             except json.JSONDecodeError:
                 pass
     return None
