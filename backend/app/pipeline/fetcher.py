@@ -140,8 +140,9 @@ async def fetch_and_save_all_async(db, sources: list) -> dict[str, int]:
     enabled_sources = [s for s in sources if s.enabled]
     source_entries = await fetch_all_sources_async(enabled_sources)
 
-    # 一次性查出所有已有 link，避免逐条 DB 查询和跨源 link 冲突
+    # 一次性查出所有已有 link 和 (source_id, guid)，避免逐条 DB 查询
     existing_links = {row[0] for row in db.query(RawArticle.link).all()}
+    existing_guids = {(row[0], row[1]) for row in db.query(RawArticle.source_id, RawArticle.guid).all()}
 
     result = {}
     for src in enabled_sources:
@@ -155,7 +156,7 @@ async def fetch_and_save_all_async(db, sources: list) -> dict[str, int]:
             if e.link in existing_links:
                 continue
             guid_key = (src.id, e.guid)
-            if guid_key in seen_guids:
+            if guid_key in seen_guids or guid_key in existing_guids:
                 continue
             seen_guids.add(guid_key)
             existing_links.add(e.link)
