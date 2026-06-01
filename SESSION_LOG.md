@@ -120,3 +120,25 @@
 - 收藏相关测试（8 个）缺少 auth headers，是预先存在的问题，非本次引入
 - 系统设置写入 `.env` 后需重启服务才生效，无热更新
 - `news-website.tar.gz` 和 `setup_proxy.sh` 未提交（不属于功能代码）
+
+---
+
+## 2026-06-01 — 修复摘要 429 限流导致板块缺失
+
+### 本次完成的工作
+1. **诊断问题**：分析 05-30 ~ 06-01 三天 pipeline 日志，发现 finance/business/international/social 等板块连续写入 0 条
+2. **定位根因**：DeepSeek API 在并发摘要阶段频繁返回 429 Too Many Requests，后半部分板块的摘要全部失败
+3. **修复**：
+   - `summarizer.py`：429 时指数退避重试（最多 3 次，间隔 2s → 4s）
+   - `orchestrator.py`：摘要并发从 5 降到 3
+
+### 为什么
+之前出现过 LLM 输出 list 类型 JSON 导致流水线崩溃的问题，这次是不同原因——API 限流。并发 5 个请求同时打 DeepSeek，越到后面的板块积累的 429 越多，最终全部失败。
+
+### 关键决策
+- 选择指数退避重试而非简单降并发，因为限流是暂时性的，重试可以恢复
+- 并发从 5 降到 3 作为额外防护，减少触发限流的概率
+
+### 相关文件
+- `backend/app/pipeline/summarizer.py` — 加 429 重试逻辑
+- `backend/app/pipeline/orchestrator.py` — 并发 5 → 3
