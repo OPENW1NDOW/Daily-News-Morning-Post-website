@@ -136,7 +136,7 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
 
         # ── Step 6: 生成摘要（并发） ────────────────────────────
         _update_progress(step="AI 正在生成摘要...", step_index=6)
-        logger.info("[6/7] 生成 AI 摘要（并发 5）...")
+        logger.info("[6/7] 生成 AI 摘要（并发 3）...")
         summary_results: dict[int, dict | None] = {}
 
         # 主线程预提取文本，避免子线程触发 SQLAlchemy lazy loading
@@ -151,7 +151,7 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
             return art_id, result
 
         # 并发生成摘要
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {executor.submit(_summarize_one, item): item for item in _articles_data}
             completed = 0
             for future in as_completed(futures):

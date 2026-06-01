@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from openai import OpenAI
 from ..config import settings
 from ..utils.logger import get_logger
@@ -67,26 +68,33 @@ def _extract_json(text: str) -> dict | None:
     return None
 
 
-def summarize(title: str, text: str) -> dict | None:
-    """对单篇文章生成摘要，失败返回 None。"""
+def summarize(title: str, text: str, max_retries: int = 3) -> dict | None:
+    """对单篇文章生成摘要，失败返回 None。429 限流时指数退避重试。"""
     prompt = f"标题：{title}\n\n正文：{text[:3000]}"
-    try:
-        resp = _get_client().chat.completions.create(
-            model=settings.llm_model,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
-        content = resp.choices[0].message.content
-        result = _extract_json(content)
-        if result is None:
-            logger.warning(f"无法从摘要响应中提取 JSON [{title[:30]}]: {content[:200]}")
-        return result
-    except Exception as e:
-        logger.warning(f"摘要失败 [{title[:30]}]: {e}")
-        return None
+    for attempt in range(max_retries):
+        try:
+            resp = _get_client().chat.completions.create(
+                model=settings.llm_model,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                response_format={"type": "json_object"},
+            )
+            content = resp.choices[0].message.content
+            result = _extract_json(content)
+            if result is None:
+                logger.warning(f"无法从摘要响应中提取 JSON [{title[:30]}]: {content[:200]}")
+            return result
+        except Exception as e:
+            is_429 = "429" in str(e)
+            if is_429 and attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)  # 2s, 4s
+                logger.info(f"摘要限流，等待 {wait}s 后重试 [{title[:30]}]")
+                time.sleep(wait)
+                continue
+            logger.warning(f"摘要失败 [{title[:30]}]: {e}")
+            return None
 
 
