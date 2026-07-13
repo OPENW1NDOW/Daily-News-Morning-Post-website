@@ -17,10 +17,11 @@ class TestCategories:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
-        assert len(data) == 8
+        assert len(data) == 9
         keys = {c["key"] for c in data}
         assert "ai" in keys
         assert "tech" in keys
+        assert "following" in keys
         for c in data:
             assert c["count"] == 0
 
