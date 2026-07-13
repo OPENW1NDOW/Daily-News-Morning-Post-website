@@ -49,11 +49,12 @@ def run_daily(db, trigger: str = "scheduler") -> dict:
 
 
 async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
-    from ..models import Source, RawArticle, NewsItem, PipelineRun
+    from ..models import Source, RawArticle, PipelineRun
     from .fetcher import fetch_and_save_all_async
     from .classifier import classify_articles
     from .extractor import extract_text
     from .summarizer import summarize
+    from .persist import upsert_rss_items
 
     run_record = PipelineRun(trigger=trigger, status="running")
     db.add(run_record)
@@ -70,13 +71,6 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
     _update_progress(running=True, categories_done=0)
 
     try:
-        # ── Step 0: 清除今日旧 news_items，避免重复累加 ──────
-        _update_progress(step="清理旧数据...", step_index=0)
-        deleted = db.query(NewsItem).filter(NewsItem.date == target_date).delete()
-        db.commit()
-        if deleted:
-            logger.info(f"[0/7] 已清除 {deleted} 条今日旧 news_items")
-
         # ── Step 1: 拉取所有启用源 ─────────────────────────────
         _update_progress(step="正在拉取 RSS 源...", step_index=1)
         logger.info("[1/7] 拉取 RSS 源...")
@@ -167,33 +161,27 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
         final_counts: dict[str, int] = {}
 
         for cat, pool in category_pools.items():
-            written = 0
+            rows = []
             for art in pool:
-                if written >= FINAL_PER_CATEGORY:
+                if len(rows) >= FINAL_PER_CATEGORY:
                     break
                 result = summary_results.get(art.id)
                 if result is None:
                     logger.debug(f"  跳过（摘要失败）: {art.title[:40]}")
                     continue
-
                 src = db.get(Source, art.source_id)
                 source_name = src.name if src else "未知来源"
-
-                item = NewsItem(
-                    date=target_date,
-                    category=cat,
-                    importance=art.importance or 50,
-                    title=art.title,
-                    summary=result.get("summary"),
-                    full_summary=result.get("full_summary"),
-                    viewpoints=result.get("viewpoints"),
-                    background=result.get("background"),
-                    source_links=[{"name": source_name, "url": art.link}],
-                    raw_article_id=art.id,
-                )
-                db.add(item)
-                written += 1
-
+                rows.append({
+                    "raw_article_id": art.id,
+                    "importance": art.importance or 50,
+                    "title": art.title,
+                    "summary": result.get("summary"),
+                    "full_summary": result.get("full_summary"),
+                    "viewpoints": result.get("viewpoints"),
+                    "background": result.get("background"),
+                    "source_links": [{"name": source_name, "url": art.link}],
+                })
+            written = upsert_rss_items(db, target_date=target_date, category=cat, rows=rows)
             db.commit()
             final_counts[cat] = written
             with _progress_lock:
