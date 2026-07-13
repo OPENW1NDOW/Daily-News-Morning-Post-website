@@ -28,6 +28,10 @@ class SourceUpdate(BaseModel):
     use_proxy: bool | None = None
 
 
+class XAccountEnabledUpdate(BaseModel):
+    enabled: bool
+
+
 class NewsUpdate(BaseModel):
     title: str | None = None
     summary: str | None = None

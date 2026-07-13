@@ -14,8 +14,11 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_db, SessionLocal
-from ..models import NewsItem, Source, User, Favorite, PipelineRun
-from ..schemas import SourceUpdate, NewsUpdate, AdminToggle, CategoryUpdate, SettingsUpdate
+from ..models import NewsItem, Source, User, Favorite, PipelineRun, XAccount
+from ..schemas import (
+    SourceUpdate, NewsUpdate, AdminToggle, CategoryUpdate, SettingsUpdate,
+    XAccountEnabledUpdate,
+)
 from ..utils.logger import get_logger
 from .deps import require_admin
 
@@ -474,3 +477,73 @@ def update_settings(body: SettingsUpdate, user: User = Depends(require_admin)):
         changed_keys.add(env_key)
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"message": f"已更新 {', '.join(changed_keys)}。部分设置需要重启服务才能生效。"}
+
+
+# ═══════════════════════════════════════════════════════════
+#  X Following 账号管理
+# ═══════════════════════════════════════════════════════════
+
+def _x_account_dict(a: XAccount) -> dict:
+    return {
+        "id": a.id,
+        "x_user_id": a.x_user_id,
+        "handle": a.handle,
+        "display_name": a.display_name,
+        "avatar_url": a.avatar_url,
+        "enabled": a.enabled,
+        "is_following": a.is_following,
+        "first_seen_at": a.first_seen_at.isoformat() if a.first_seen_at else None,
+        "last_synced_at": a.last_synced_at.isoformat() if a.last_synced_at else None,
+        "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+    }
+
+
+@router.get("/api/admin/x-following/accounts")
+def list_x_following_accounts(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    accounts = db.query(XAccount).order_by(XAccount.id).all()
+    return [_x_account_dict(a) for a in accounts]
+
+
+@router.patch("/api/admin/x-following/accounts/{account_id}")
+def update_x_following_account(
+    account_id: int,
+    body: XAccountEnabledUpdate,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    account = db.get(XAccount, account_id)
+    if not account:
+        raise HTTPException(404, "账号不存在")
+    account.enabled = body.enabled
+    db.commit()
+    db.refresh(account)
+    return _x_account_dict(account)
+
+
+@router.post("/api/admin/x-following/sync")
+def sync_x_following(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    from ..pipeline.sync_x_following import sync_following_accounts
+    try:
+        sync_following_accounts(db)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"X Following 同步失败: {e}", exc_info=True)
+        raise HTTPException(500, f"同步失败: {e}")
+    count = db.query(XAccount).filter(XAccount.is_following.is_(True)).count()
+    return {"status": "ok", "count": count}
+
+
+@router.get("/api/admin/x-following/status")
+def x_following_status(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    cookie_configured = bool(settings.x_auth_token and settings.x_ct0)
+    max_synced = db.query(func.max(XAccount.last_synced_at)).scalar()
+    latest_run = db.query(PipelineRun).order_by(PipelineRun.id.desc()).first()
+    following = None
+    if latest_run and isinstance(latest_run.result, dict):
+        following = latest_run.result.get("following")
+    return {
+        "cookie_configured": cookie_configured,
+        "last_synced_at": max_synced.isoformat() if max_synced else None,
+        "following": following,
+    }

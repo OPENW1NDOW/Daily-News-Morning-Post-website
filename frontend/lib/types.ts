@@ -108,3 +108,22 @@ export interface AdminNewsItem {
   summary: string | null
   created_at: string | null
 }
+
+export interface XAccount {
+  id: number
+  x_user_id: string
+  handle: string
+  display_name: string
+  avatar_url: string | null
+  enabled: boolean
+  is_following: boolean
+  first_seen_at: string | null
+  last_synced_at: string | null
+  updated_at: string | null
+}
+
+export interface XFollowingStatus {
+  cookie_configured: boolean
+  last_synced_at: string | null
+  following: { status: string; written: number; error: string | null } | null
+}

@@ -35,3 +35,7 @@ categories:
   - key: social
     name: 社会人文
     description: 社会热点事件、民生问题、文化现象、教育变革、伦理讨论、环境保护
+
+  - key: following
+    name: Following
+    description: 你在 X 上关注的博主精选帖（AI / Agent / LLM 向）

@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-07-13 — X Following (bird) + favorites upsert
+
+### 本次完成的工作
+- favorites 安全：persist upsert 按稳定键，去掉 orchestrator Step0 全日硬删
+- Following 旁路：bird_client / sync_x_following / tweet_filter / following_select / following_branch
+- Admin API + UI Tab；categories.yaml 增加 following；Hero 排除 following
+- Docker 安装 Node + bird@0.8.0
+
+### 关键决策
+- RSS upsert 按 (date, category) 作用域调用；稳定键 raw_article_id
+- Following 稳定键 external_id in source_links；不入 raw_articles
+- 旁路与主线互不影响：RSS fail→error；仅 Following fail→success
+- auto-sync 仅 x_accounts 空表时触发
+
+### 相关文件
+- backend/app/pipeline/persist.py, bird_client.py, sync_x_following.py, tweet_filter.py, following_select.py, following_branch.py, orchestrator.py
+- backend/app/models.py (XAccount), admin.py, Dockerfile, categories.yaml
+- frontend: HomeContent, XFollowingManager, admin page, api/types
+
+### 遗留问题
+- Cookie 续期需人工（AUTH_TOKEN/CT0）
+- 真机 bird 拉 following/tweets 尚未在生产验证
+- docker build 未在本机冒烟
+- test_api 部分 favorites 401 为预存问题（若仍在）
+
+---
+
 ## 2026-05-12 — 跨会话协作机制建立与 Git 工作流讨论
 
 ### 本次完成的工作
