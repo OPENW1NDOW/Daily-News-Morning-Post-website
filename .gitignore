@@ -39,3 +39,5 @@ tasks/
 
 # 过程性文档
 docs/deploy-todo.md
+
+.superpowers/
