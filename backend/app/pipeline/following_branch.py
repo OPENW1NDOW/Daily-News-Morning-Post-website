@@ -77,6 +77,8 @@ async def run_following_branch(
         )
 
         all_tweets: list[dict] = []
+        ok_fetches = 0
+        fail_errors: list[str] = []
         for account, result in zip(accounts, results):
             if isinstance(result, BirdAuthError):
                 return {"status": "error", "written": 0, "error": str(result)[:500]}
@@ -86,11 +88,23 @@ async def run_following_branch(
                     account.handle,
                     result,
                 )
+                fail_errors.append(f"@{account.handle}: {result}")
                 continue
+            ok_fetches += 1
             all_tweets.extend(result)
 
+        if accounts and ok_fetches == 0:
+            err = "all tweet fetches failed"
+            if fail_errors:
+                err = f"{err}: {'; '.join(fail_errors)}"
+            return {"status": "error", "written": 0, "error": err[:500]}
+
         filtered = filter_tweets(all_tweets)
-        selected = select_tweets(filtered)[:_FINAL_TOP_N]
+        try:
+            selected = select_tweets(filtered)[:_FINAL_TOP_N]
+        except Exception as e:
+            logger.exception("Following select failed")
+            return {"status": "error", "written": 0, "error": str(e)[:500]}
 
         rows = []
         for t in selected:

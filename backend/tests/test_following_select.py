@@ -2,6 +2,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.pipeline import following_select as mod
 
 
@@ -82,9 +84,10 @@ def test_empty_input_returns_empty(monkeypatch):
     mock_client.chat.completions.create.assert_not_called()
 
 
-def test_api_error_returns_empty(monkeypatch):
+def test_api_error_raises(monkeypatch):
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = Exception("API timeout")
     monkeypatch.setattr(mod, "_get_client", lambda: mock_client)
 
-    assert mod.select_tweets([_tweet("1")]) == []
+    with pytest.raises(Exception, match="API timeout"):
+        mod.select_tweets([_tweet("1")])

@@ -142,3 +142,133 @@ def test_bird_failure_does_not_fail_mainline(db, monkeypatch):
     assert run is not None
     assert run.status == "success"
     assert run.result["following"]["status"] == "error"
+
+
+def test_all_fetches_failed_does_not_wipe_following(db, monkeypatch):
+    """全量抓取失败时不得 upsert([]) 清空当日未收藏 Following。"""
+    monkeypatch.setattr("app.pipeline.following_branch.settings.x_auth_token", "tok")
+    monkeypatch.setattr("app.pipeline.following_branch.settings.x_ct0", "ct0")
+
+    now = datetime.now(timezone.utc)
+    d = now.date()
+    seeded = NewsItem(
+        date=d,
+        category=FOLLOWING_CATEGORY,
+        importance=80,
+        title="keep-me",
+        raw_article_id=None,
+        source_links=[{
+            "name": "@alice",
+            "url": "https://x.com/i/status/seed1",
+            "external_id": "seed1",
+        }],
+    )
+    db.add(seeded)
+    db.add(
+        XAccount(
+            x_user_id="1",
+            handle="alice",
+            display_name="Alice",
+            enabled=True,
+            is_following=True,
+        )
+    )
+    db.commit()
+    seeded_id = seeded.id
+
+    def boom(*_a, **_k):
+        raise RuntimeError("fetch failed")
+
+    monkeypatch.setattr(following_branch, "fetch_user_tweets", boom)
+
+    upsert_calls = {"n": 0}
+
+    def tracking_upsert(*_a, **_k):
+        upsert_calls["n"] += 1
+        raise AssertionError("upsert_following_items must not be called")
+
+    monkeypatch.setattr(following_branch, "upsert_following_items", tracking_upsert)
+
+    result = asyncio.run(
+        following_branch.run_following_branch(db, d, now - timedelta(hours=24), now)
+    )
+
+    assert result["status"] == "error"
+    assert result["written"] == 0
+    assert "all tweet fetches failed" in (result["error"] or "")
+    assert upsert_calls["n"] == 0
+    still = db.get(NewsItem, seeded_id)
+    assert still is not None
+    assert still.title == "keep-me"
+
+
+def test_select_failure_does_not_wipe_following(db, monkeypatch):
+    """LLM 精选硬失败时不得 upsert([]) 清空当日 Following。"""
+    monkeypatch.setattr("app.pipeline.following_branch.settings.x_auth_token", "tok")
+    monkeypatch.setattr("app.pipeline.following_branch.settings.x_ct0", "ct0")
+
+    now = datetime.now(timezone.utc)
+    d = now.date()
+    seeded = NewsItem(
+        date=d,
+        category=FOLLOWING_CATEGORY,
+        importance=80,
+        title="keep-select",
+        raw_article_id=None,
+        source_links=[{
+            "name": "@bob",
+            "url": "https://x.com/i/status/seed2",
+            "external_id": "seed2",
+        }],
+    )
+    db.add(seeded)
+    db.add(
+        XAccount(
+            x_user_id="2",
+            handle="bob",
+            display_name="Bob",
+            enabled=True,
+            is_following=True,
+        )
+    )
+    db.commit()
+    seeded_id = seeded.id
+
+    monkeypatch.setattr(
+        following_branch,
+        "fetch_user_tweets",
+        lambda *_a, **_k: [{
+            "tweet_id": "t1",
+            "handle": "bob",
+            "text": "A" * 80,
+            "link": "https://x.com/i/status/t1",
+            "published_at": now.isoformat(),
+            "is_retweet": False,
+            "is_quote": False,
+        }],
+    )
+
+    def select_boom(*_a, **_k):
+        raise RuntimeError("LLM select failed")
+
+    monkeypatch.setattr(following_branch, "select_tweets", select_boom)
+
+    upsert_calls = {"n": 0}
+
+    def tracking_upsert(*_a, **_k):
+        upsert_calls["n"] += 1
+        raise AssertionError("upsert_following_items must not be called")
+
+    monkeypatch.setattr(following_branch, "upsert_following_items", tracking_upsert)
+
+    result = asyncio.run(
+        following_branch.run_following_branch(db, d, now - timedelta(hours=24), now)
+    )
+
+    assert result["status"] == "error"
+    assert result["written"] == 0
+    assert "LLM select failed" in (result["error"] or "")
+    assert upsert_calls["n"] == 0
+    still = db.get(NewsItem, seeded_id)
+    assert still is not None
+    assert still.title == "keep-select"

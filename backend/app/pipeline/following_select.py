@@ -74,33 +74,29 @@ def _extract_json(text: str):
 
 
 def _select_batch(items: list[dict]) -> list[dict]:
-    """对一批推文调用 LLM，返回含 tweet_id/keep/summary/score 的列表。失败返回空列表。"""
+    """对一批推文调用 LLM，返回含 tweet_id/keep/summary/score 的列表。API/解析失败抛异常。"""
     payload = json.dumps(items, ensure_ascii=False)
-    try:
-        resp = _get_client().chat.completions.create(
-            model=settings.llm_model,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": payload},
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"},
-        )
-        content = resp.choices[0].message.content
-        parsed = _extract_json(content)
-        if parsed is None:
-            logger.warning(f"无法从 LLM 响应中提取 JSON: {content[:200]}")
-            return []
-        if isinstance(parsed, list):
-            return parsed
-        for v in parsed.values():
-            if isinstance(v, list):
-                return v
-        logger.warning("精选响应格式异常，无法解析为列表")
-        return []
-    except Exception as e:
-        logger.warning(f"Following 精选失败（{len(items)} 条）: {e}")
-        return []
+    resp = _get_client().chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": payload},
+        ],
+        temperature=0.1,
+        response_format={"type": "json_object"},
+    )
+    content = resp.choices[0].message.content
+    parsed = _extract_json(content)
+    if parsed is None:
+        logger.warning(f"无法从 LLM 响应中提取 JSON: {content[:200]}")
+        raise RuntimeError("Following select JSON parse failed")
+    if isinstance(parsed, list):
+        return parsed
+    for v in parsed.values():
+        if isinstance(v, list):
+            return v
+    logger.warning("精选响应格式异常，无法解析为列表")
+    raise RuntimeError("Following select response format invalid")
 
 
 def select_tweets(tweets: list[dict]) -> list[dict]:
