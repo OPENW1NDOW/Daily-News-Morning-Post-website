@@ -197,6 +197,7 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
     logger.info(f"抓取窗口：{day_start.strftime('%m-%d %H:%M')} ~ {day_end.strftime('%m-%d %H:%M')} CST")
     _update_progress(running=True, categories_done=0)
 
+    run_id = run_record.id
     try:
         final_counts = {}
         rss_error = None
@@ -205,6 +206,9 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
         except Exception as e:
             rss_error = str(e)[:500]
             logger.exception("RSS pipeline failed")
+            db.rollback()
+            run_record = db.get(PipelineRun, run_id)
+            assert run_record is not None
 
         following_result = {"status": "skipped", "written": 0, "error": None}
         try:
@@ -212,6 +216,9 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
         except Exception as e:
             following_result = {"status": "error", "written": 0, "error": str(e)[:500]}
             logger.exception("Following branch failed")
+            db.rollback()
+            run_record = db.get(PipelineRun, run_id)
+            assert run_record is not None
 
         run_record.result = {**final_counts, "following": following_result}
         if rss_error:

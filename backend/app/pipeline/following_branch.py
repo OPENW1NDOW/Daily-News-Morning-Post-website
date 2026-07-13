@@ -46,13 +46,15 @@ async def run_following_branch(
 
         accounts = _enabled_following(db)
         if not accounts:
-            try:
-                sync_following_accounts(db)
-                db.commit()
-            except Exception as e:
-                logger.exception("Following sync failed")
-                return {"status": "error", "written": 0, "error": str(e)[:500]}
-            accounts = _enabled_following(db)
+            # 仅当表为空时自动 sync；用户禁用全部账号则跳过，不覆盖
+            if db.query(XAccount).count() == 0:
+                try:
+                    sync_following_accounts(db)
+                    db.commit()
+                except Exception as e:
+                    logger.exception("Following sync failed")
+                    return {"status": "error", "written": 0, "error": str(e)[:500]}
+                accounts = _enabled_following(db)
             if not accounts:
                 return {"status": "skipped", "written": 0, "error": None}
 
