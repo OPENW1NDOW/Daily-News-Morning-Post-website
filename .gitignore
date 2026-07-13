@@ -37,8 +37,8 @@ Thumbs.db
 .claude/
 tasks/
 
-# 过程性文档
-docs/deploy-todo.md
+# 过程性文档 / 设计与计划（本地保留，不入库）
+docs/
 
 .superpowers/
 .worktrees/
