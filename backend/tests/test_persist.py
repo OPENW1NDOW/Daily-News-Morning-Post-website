@@ -1,6 +1,6 @@
 from datetime import date
 from app.models import NewsItem, Favorite, User
-from app.pipeline.persist import upsert_rss_items, EXTERNAL_ID_KEY
+from app.pipeline.persist import upsert_rss_items, upsert_following_items, EXTERNAL_ID_KEY
 
 
 def test_rss_upsert_keeps_id_and_favorite(db):
@@ -88,12 +88,11 @@ def test_rss_keeps_favorited_even_if_absent_from_new_set(db):
 
 
 def test_following_upsert_by_external_id(db):
-    from app.pipeline.persist import upsert_following_items
     d = date.today()
     item = NewsItem(
         date=d, category="following", importance=70, title="旧推",
         raw_article_id=None,
-        source_links=[{"name": "@a", "url": "https://x.com/i/status/99", "external_id": "99"}],
+        source_links=[{"name": "@a", "url": "https://x.com/i/status/99", EXTERNAL_ID_KEY: "99"}],
     )
     db.add(item)
     db.commit()
@@ -115,5 +114,67 @@ def test_following_upsert_by_external_id(db):
         }],
     )
     db.commit()
-    assert db.get(NewsItem, old_id).title == "新推"
-    assert db.get(NewsItem, old_id).importance == 88
+    again = db.get(NewsItem, old_id)
+    assert again.title == "新推"
+    assert again.importance == 88
+    assert len(again.source_links) == 1
+    link = again.source_links[0]
+    assert link["name"] == "@a"
+    assert link[EXTERNAL_ID_KEY] == "99"
+    assert link["url"] == "https://x.com/i/status/99"
+
+
+def test_following_deletes_unfavorited_absent_from_new_set(db):
+    d = date.today()
+    keep = NewsItem(
+        date=d, category="following", importance=80, title="留",
+        raw_article_id=None,
+        source_links=[{"name": "@a", "url": "https://x.com/i/status/1", EXTERNAL_ID_KEY: "1"}],
+    )
+    drop = NewsItem(
+        date=d, category="following", importance=50, title="丢",
+        raw_article_id=None,
+        source_links=[{"name": "@b", "url": "https://x.com/i/status/2", EXTERNAL_ID_KEY: "2"}],
+    )
+    db.add_all([keep, drop])
+    db.commit()
+
+    upsert_following_items(
+        db,
+        target_date=d,
+        rows=[{
+            "external_id": "1",
+            "importance": 80,
+            "title": "留",
+            "summary": None,
+            "full_summary": None,
+            "viewpoints": None,
+            "background": None,
+            "handle": "a",
+            "url": "https://x.com/i/status/1",
+        }],
+    )
+    db.commit()
+    items = db.query(NewsItem).filter_by(date=d, category="following").all()
+    ids = {n.source_links[0][EXTERNAL_ID_KEY] for n in items}
+    assert ids == {"1"}
+
+
+def test_following_keeps_favorited_even_if_absent_from_new_set(db):
+    d = date.today()
+    fav_item = NewsItem(
+        date=d, category="following", importance=50, title="藏",
+        raw_article_id=None,
+        source_links=[{"name": "@b", "url": "https://x.com/i/status/2", EXTERNAL_ID_KEY: "2"}],
+    )
+    db.add(fav_item)
+    db.flush()
+    user = User(username="u3", password_hash="x")
+    db.add(user)
+    db.flush()
+    db.add(Favorite(user_id=user.id, news_item_id=fav_item.id))
+    db.commit()
+
+    upsert_following_items(db, target_date=d, rows=[])
+    db.commit()
+    assert db.query(NewsItem).filter_by(id=fav_item.id).one().title == "藏"
