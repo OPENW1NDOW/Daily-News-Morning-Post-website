@@ -94,3 +94,19 @@ class PipelineRun(Base):
     status: Mapped[str] = mapped_column(String, default="running")
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class XAccount(Base):
+    __tablename__ = "x_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    x_user_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    handle: Mapped[str] = mapped_column(String, nullable=False)
+    display_name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_following: Mapped[bool] = mapped_column(Boolean, default=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+

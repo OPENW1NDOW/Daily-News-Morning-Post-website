@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
-from app.models import NewsItem, Favorite, Source, RawArticle
+from app.models import NewsItem, Favorite, Source, RawArticle, XAccount
 
 # 内存数据库 — StaticPool 确保所有连接共享同一个 :memory: 实例
 TEST_DB_URL = "sqlite:///:memory:"
