@@ -82,14 +82,17 @@ export function HomeContent() {
     loadData()
   }, [loadData])
 
-  // Hero：全天 importance 最高的 1 条
+  // Hero：全天 importance 最高的 1 条（排除 following）
   const { hero, sectionItems } = useMemo(() => {
     const all = Object.values(itemsByCategory).flat()
     if (all.length === 0) return { hero: null as NewsItem | null, sectionItems: {} as Record<string, NewsItem[]> }
-    const hero = all.reduce((a, b) => (b.importance > a.importance ? b : a))
+    const candidates = all.filter((it) => it.category !== "following")
+    const hero = candidates.length
+      ? candidates.reduce((a, b) => (b.importance > a.importance ? b : a))
+      : null
     const sectionItems: Record<string, NewsItem[]> = {}
     for (const [key, items] of Object.entries(itemsByCategory)) {
-      sectionItems[key] = items.filter((it) => it.id !== hero.id)
+      sectionItems[key] = hero ? items.filter((it) => it.id !== hero.id) : items
     }
     return { hero, sectionItems }
   }, [itemsByCategory])
