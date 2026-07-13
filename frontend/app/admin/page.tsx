@@ -7,7 +7,7 @@ import { api } from "@/lib/api"
 import { isAuthenticated } from "@/lib/auth"
 import type { UserProfile } from "@/lib/types"
 import {
-  LayoutDashboard, Play, Rss, Newspaper, Users, Tags, Settings, ArrowLeft, LogOut,
+  LayoutDashboard, Play, Rss, Newspaper, Users, Tags, Settings, ArrowLeft, LogOut, AtSign,
 } from "lucide-react"
 import { clearToken } from "@/lib/auth"
 
@@ -18,13 +18,15 @@ import NewsManager from "@/components/admin/NewsManager"
 import UserManager from "@/components/admin/UserManager"
 import CategoryManager from "@/components/admin/CategoryManager"
 import SystemSettings from "@/components/admin/SystemSettings"
+import XFollowingManager from "@/components/admin/XFollowingManager"
 
-type AdminTab = "dashboard" | "pipeline" | "sources" | "news" | "users" | "categories" | "settings"
+type AdminTab = "dashboard" | "pipeline" | "sources" | "x-following" | "news" | "users" | "categories" | "settings"
 
 const TABS: { key: AdminTab; label: string; icon: React.ReactNode }[] = [
   { key: "dashboard", label: "仪表盘", icon: <LayoutDashboard size={18} /> },
   { key: "pipeline", label: "流水线", icon: <Play size={18} /> },
   { key: "sources", label: "数据源", icon: <Rss size={18} /> },
+  { key: "x-following", label: "X Following", icon: <AtSign size={18} /> },
   { key: "news", label: "新闻管理", icon: <Newspaper size={18} /> },
   { key: "users", label: "用户管理", icon: <Users size={18} /> },
   { key: "categories", label: "板块管理", icon: <Tags size={18} /> },
@@ -73,6 +75,7 @@ export default function AdminPage() {
       case "dashboard": return <AdminDashboard />
       case "pipeline": return <PipelineControl />
       case "sources": return <SourceManager />
+      case "x-following": return <XFollowingManager />
       case "news": return <NewsManager />
       case "users": return <UserManager />
       case "categories": return <CategoryManager />

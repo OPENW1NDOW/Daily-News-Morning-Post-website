@@ -1,7 +1,7 @@
 import type {
   NewsItem, Category, AdminStatus, UserProfile, AdminDashboard,
   PipelineRun, SourceDetail, AdminUser, CategoryConfig, SystemSettings, AdminNewsItem,
-  PipelineProgress,
+  PipelineProgress, XAccount, XFollowingStatus,
 } from "./types"
 import { getToken } from "./auth"
 
@@ -143,4 +143,14 @@ export const api = {
     request<{ message: string }>("/api/admin/settings", {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
+
+  // X Following
+  adminXFollowingAccounts: () => request<XAccount[]>("/api/admin/x-following/accounts"),
+  adminPatchXFollowingAccount: (id: number, data: { enabled: boolean }) =>
+    request<XAccount>(`/api/admin/x-following/accounts/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  adminSyncXFollowing: () =>
+    request<{ status: string; count: number }>("/api/admin/x-following/sync", { method: "POST" }),
+  adminXFollowingStatus: () => request<XFollowingStatus>("/api/admin/x-following/status"),
 }
