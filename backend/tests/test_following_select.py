@@ -27,23 +27,53 @@ def _mock_client(content: str) -> MagicMock:
     return mock_client
 
 
-def test_keeps_and_sorts_by_score_desc(monkeypatch):
-    tweets = [_tweet("a"), _tweet("b"), _tweet("c")]
-    payload = json.dumps([
-        {"tweet_id": "a", "keep": True, "summary": "低分", "score": 40},
-        {"tweet_id": "b", "keep": True, "summary": "高分", "score": 90},
-        {"tweet_id": "c", "keep": False, "summary": "丢弃", "score": 99},
-    ])
+def test_accepts_items_wrapped_object(monkeypatch):
+    """json_object 模式常见包装：{"items": [...]}"""
+    tweets = [_tweet("a"), _tweet("b")]
+    payload = json.dumps({
+        "items": [
+            {"tweet_id": "a", "keep": True, "summary": "A", "score": 70},
+            {"tweet_id": "b", "keep": True, "summary": "B", "score": 90},
+        ]
+    })
+    monkeypatch.setattr(mod, "_get_client", lambda: _mock_client(payload))
+    result = mod.select_tweets(tweets)
+    assert [r["tweet_id"] for r in result] == ["b", "a"]
+
+
+def test_accepts_single_object_as_one_result(monkeypatch):
+    tweets = [_tweet("only")]
+    payload = json.dumps({
+        "tweet_id": "only", "keep": True, "summary": "单条", "score": 88,
+    })
+    monkeypatch.setattr(mod, "_get_client", lambda: _mock_client(payload))
+    result = mod.select_tweets(tweets)
+    assert len(result) == 1
+    assert result[0]["tweet_id"] == "only"
+    assert result[0]["score"] == 88
+
+
+def test_accepts_id_keyed_object_map(monkeypatch):
+    tweets = [_tweet("1"), _tweet("2")]
+    payload = json.dumps({
+        "1": {"tweet_id": "1", "keep": True, "summary": "一", "score": 60},
+        "2": {"tweet_id": "2", "keep": False, "summary": "二", "score": 99},
+    })
+    monkeypatch.setattr(mod, "_get_client", lambda: _mock_client(payload))
+    result = mod.select_tweets(tweets)
+    assert [r["tweet_id"] for r in result] == ["1"]
+
+
+def test_prompt_requests_items_wrapper(monkeypatch):
+    tweets = [_tweet("1")]
+    payload = json.dumps({"items": [
+        {"tweet_id": "1", "keep": True, "summary": "ok", "score": 80},
+    ]})
     mock_client = _mock_client(payload)
     monkeypatch.setattr(mod, "_get_client", lambda: mock_client)
-
-    result = mod.select_tweets(tweets)
-
-    assert [r["tweet_id"] for r in result] == ["b", "a"]
-    assert result[0]["summary"] == "高分"
-    assert result[0]["score"] == 90
-    assert result[0]["handle"] == "ai_person"
-    assert result[0]["text"].startswith("A long enough")
+    mod.select_tweets(tweets)
+    system = mock_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert '"items"' in system or "items" in system
 
 
 def test_truncates_to_top_n(monkeypatch):

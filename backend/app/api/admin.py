@@ -20,6 +20,7 @@ from ..schemas import (
     XAccountEnabledUpdate,
 )
 from ..utils.logger import get_logger
+from ..utils.timeutil import business_date
 from .deps import require_admin
 
 router = APIRouter()
@@ -69,7 +70,7 @@ def refresh(background_tasks: BackgroundTasks):
 
 @router.get("/api/admin/status")
 def status(db: Session = Depends(get_db)):
-    today = date.today()
+    today = business_date()
     today_count = db.query(NewsItem).filter(NewsItem.date == today).count()
     sources = db.query(Source).all()
     source_list = [
@@ -97,7 +98,7 @@ def status(db: Session = Depends(get_db)):
 
 @router.get("/api/admin/dashboard")
 def dashboard(user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    today = date.today()
+    today = business_date()
     today_count = db.query(NewsItem).filter(NewsItem.date == today).count()
     user_count = db.query(User).count()
     total_news = db.query(NewsItem).count()

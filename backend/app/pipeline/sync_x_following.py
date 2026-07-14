@@ -11,7 +11,10 @@ from .bird_client import list_following
 
 def sync_following_accounts(db: Session) -> None:
     # Fetch first — if this raises, leave DB untouched.
-    accounts = list_following()
+    accounts = [
+        a for a in list_following()
+        if str(a.get("x_user_id") or "").strip() and str(a.get("handle") or "").strip()
+    ]
     now = datetime.now(timezone.utc)
     fetched_ids = {a["x_user_id"] for a in accounts}
 

@@ -58,14 +58,15 @@ def health():
 def list_categories(date: str = None, db=Depends(get_db)):
     from datetime import date as date_type
     from .models import NewsItem
+    from .utils.timeutil import business_date
     from sqlalchemy import func
     if date:
         try:
             target_date = date_type.fromisoformat(date)
         except ValueError:
-            target_date = date_type.today()
+            target_date = business_date()
     else:
-        target_date = date_type.today()
+        target_date = business_date()
     counts = dict(
         db.query(NewsItem.category, func.count(NewsItem.id))
         .filter(NewsItem.date == target_date)

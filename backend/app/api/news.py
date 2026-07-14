@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import NewsItem, Favorite, User
 from ..schemas import NewsItemOut
+from ..utils.timeutil import business_date
 from .deps import get_current_user
 
 router = APIRouter()
@@ -28,8 +29,7 @@ def list_news(
     user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    today = date_type.today()
-    q = db.query(NewsItem).filter(NewsItem.date == (date or today))
+    q = db.query(NewsItem).filter(NewsItem.date == (date or business_date()))
     if category:
         q = q.filter(NewsItem.category == category)
     items = q.order_by(NewsItem.importance.desc()).limit(6).all()

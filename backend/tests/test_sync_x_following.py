@@ -38,3 +38,21 @@ def test_sync_failure_does_not_flip_flags(db, monkeypatch):
     with pytest.raises(RuntimeError):
         mod.sync_following_accounts(db)
     assert db.query(XAccount).filter_by(x_user_id="1").one().is_following is True
+
+
+def test_sync_skips_empty_user_id_and_handle(db, monkeypatch):
+    from app.models import XAccount
+    from app.pipeline import sync_x_following as mod
+
+    monkeypatch.setattr(mod, "list_following", lambda: [
+        {"x_user_id": "", "handle": "bad", "display_name": "Bad", "avatar_url": None},
+        {"x_user_id": "9", "handle": "", "display_name": "NoHandle", "avatar_url": None},
+        {"x_user_id": "10", "handle": "ok", "display_name": "Ok", "avatar_url": None},
+    ])
+    mod.sync_following_accounts(db)
+    db.commit()
+
+    assert db.query(XAccount).filter_by(x_user_id="").count() == 0
+    assert db.query(XAccount).filter_by(handle="").count() == 0
+    assert db.query(XAccount).filter_by(x_user_id="10").one().handle == "ok"
+    assert db.query(XAccount).count() == 1

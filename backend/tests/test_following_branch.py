@@ -12,10 +12,23 @@ def test_cookie_empty_skips(db, monkeypatch):
     monkeypatch.setattr("app.pipeline.following_branch.settings.x_auth_token", "")
     monkeypatch.setattr("app.pipeline.following_branch.settings.x_ct0", "")
     now = datetime.now(timezone.utc)
+    msgs: list[str] = []
     result = asyncio.run(
-        following_branch.run_following_branch(db, now.date(), now - timedelta(hours=24), now)
+        following_branch.run_following_branch(
+            db,
+            now.date(),
+            now - timedelta(hours=24),
+            now,
+            on_progress=msgs.append,
+        )
     )
     assert result == {"status": "skipped", "written": 0, "error": None}
+    assert any("跳过" in m for m in msgs)
+
+
+def test_pipeline_progress_includes_following_step():
+    assert orchestrator.TOTAL_PIPELINE_STEPS == 8
+    assert orchestrator.get_pipeline_progress()["total_steps"] == 8
 
 
 def test_disabled_accounts_skip_without_sync(db, monkeypatch):
@@ -272,3 +285,57 @@ def test_select_failure_does_not_wipe_following(db, monkeypatch):
     still = db.get(NewsItem, seeded_id)
     assert still is not None
     assert still.title == "keep-select"
+
+
+def test_soft_empty_selection_does_not_wipe_following(db, monkeypatch):
+    """窗口空结果 / 全 keep=false 时不得 upsert([]) 清空当日 Following。"""
+    monkeypatch.setattr("app.pipeline.following_branch.settings.x_auth_token", "tok")
+    monkeypatch.setattr("app.pipeline.following_branch.settings.x_ct0", "ct0")
+
+    now = datetime.now(timezone.utc)
+    d = now.date()
+    seeded = NewsItem(
+        date=d,
+        category=FOLLOWING_CATEGORY,
+        importance=80,
+        title="keep-soft-empty",
+        raw_article_id=None,
+        source_links=[{
+            "name": "@carol",
+            "url": "https://x.com/i/status/seed3",
+            "external_id": "seed3",
+        }],
+    )
+    db.add(seeded)
+    db.add(
+        XAccount(
+            x_user_id="3",
+            handle="carol",
+            display_name="Carol",
+            enabled=True,
+            is_following=True,
+        )
+    )
+    db.commit()
+    seeded_id = seeded.id
+
+    monkeypatch.setattr(following_branch, "fetch_user_tweets", lambda *_a, **_k: [])
+    monkeypatch.setattr(following_branch, "select_tweets", lambda *_a, **_k: [])
+
+    upsert_calls = {"n": 0}
+
+    def tracking_upsert(*_a, **_k):
+        upsert_calls["n"] += 1
+        raise AssertionError("upsert_following_items must not be called")
+
+    monkeypatch.setattr(following_branch, "upsert_following_items", tracking_upsert)
+
+    result = asyncio.run(
+        following_branch.run_following_branch(db, d, now - timedelta(hours=24), now)
+    )
+
+    assert result == {"status": "ok", "written": 0, "error": None}
+    assert upsert_calls["n"] == 0
+    still = db.get(NewsItem, seeded_id)
+    assert still is not None
+    assert still.title == "keep-soft-empty"

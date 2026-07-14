@@ -1,20 +1,11 @@
 "use client"
 
 import { useRef } from "react"
-import { todayStr } from "@/lib/utils"
+import { todayStr, yesterdayStr } from "@/lib/utils"
 
 interface Props {
   date: string
   onChange: (date: string) => void
-}
-
-function yesterdayStr() {
-  const d = new Date()
-  d.setDate(d.getDate() - 1)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
 }
 
 function formatDisplay(dateStr: string) {

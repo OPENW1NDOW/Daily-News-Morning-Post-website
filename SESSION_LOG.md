@@ -4,6 +4,62 @@
 
 ---
 
+## 2026-07-14 — commit：Following 稳定性修复 + 业务日 + README
+
+### 做了什么
+- 合并本轮未提交改动并 push：Twitter 日期解析、Following select JSON 兼容、pipeline 进度 8/8、business_date 对齐、README 更新
+
+---
+
+## 2026-07-14 — Following select JSON 格式解析失败
+
+### 做了什么
+- 最新 pipeline run #3：`following.status=error`，`Following select response format invalid`（日期解析已修好，卡在 LLM 精选）
+- `json_object` 模式常返回非数组包装；加固 `_coerce_results_list`，prompt 改为强制 `{"items":[...]}`
+- 回归测试 + 真机 dry-run（`@levelsio` 5→kept 1）通过
+
+### 遗留
+- 需再跑一轮 refresh 才能写入 Following；未 commit
+
+### 相关文件
+- `backend/app/pipeline/following_select.py`, `backend/tests/test_following_select.py`
+
+---
+
+## 2026-07-14 — Pipeline 进度纳入 Following（8/8）
+
+### 做了什么
+- `total_steps` 从 7 → 8；RSS 结束后不再显示「完成」，改为进入第 8 步
+- Following 旁路通过 `on_progress` 上报：抓取 `n/N`、精选、写入/跳过
+- 结束后文案区分 RSS + Following 结果
+
+### 相关文件
+- `backend/app/pipeline/orchestrator.py`, `following_branch.py`, `tests/test_following_branch.py`
+
+---
+
+## 2026-07-14 — Following written:0 根因（Twitter 日期解析）
+
+### 做了什么
+- 排查 pipeline run #1：`following: {status: ok, written: 0}`，DB 无 following 条目
+- 根因：`bird_client._parse_dt` 只用 `fromisoformat`，bird 实际返回 Twitter 经典时间（`Mon Jul 13 13:42:15 +0000 2026`），全部 `ValueError` 后静默丢弃 → 软空跳过
+- 修复：`_parse_dt` 回退 `strptime(%a %b %d %H:%M:%S %z %Y)`；新增回归测试 `test_fetch_user_tweets_parses_twitter_created_at`
+- 真机验证：修复后 `@levelsio` in_window=5/filtered=5，`@steipete` 18/4
+
+### 证据
+- pipeline_runs id=1 result.following.written=0；仅 6 账号 bird fetch 失败警告，其余“成功但空”
+- dry-run：修复前 10/10 OpenAI 推文 cur_parse=False；修复后窗口内有候选
+
+### 遗留
+- 部分账号 bird `user-tweets` 仍偶发 `fetch failed`（非本次根因）
+- 纯 RT 账号经 `filter_tweets` 后仍可能为 0（产品行为）
+- 未 commit；需 Cooper 决定是否再跑一次手动 refresh
+
+### 相关文件
+- `backend/app/pipeline/bird_client.py`, `backend/tests/test_bird_client.py`
+
+---
+
 ## 2026-07-13 — X Following (bird) + favorites upsert
 
 ### 本次完成的工作

@@ -7,8 +7,9 @@ Following: sync → fetch tweets → filter → select → upsert
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from ..utils.logger import get_logger
+from ..utils.timeutil import CST, business_date
 from .classifier import CATEGORIES
 from .following_branch import run_following_branch
 
@@ -17,15 +18,15 @@ logger = get_logger(__name__)
 TOP_PER_CATEGORY = 8   # 每板块取 top-8 进入摘要，保留 6 条
 FINAL_PER_CATEGORY = 6
 LOOKBACK_HOURS = 24
-CST = timezone(timedelta(hours=8))
-CUTOFF_HOUR = 8  # 北京时间 8:00 为分界，8 点前算前一天
 
 # 流水线进度（供 admin status API 轮询）
+# 1–7: RSS 主线；8: Following 旁路
+TOTAL_PIPELINE_STEPS = 8
 _pipeline_progress: dict = {
     "running": False,
     "step": "",
     "step_index": 0,
-    "total_steps": 7,
+    "total_steps": TOTAL_PIPELINE_STEPS,
     "categories_done": 0,
     "total_categories": len(CATEGORIES),
 }
@@ -176,7 +177,7 @@ async def _run_rss_pipeline(db, target_date, day_start, day_end) -> dict:
 
     total = sum(final_counts.values())
     logger.info(f"===== RSS 主线完成：{target_date}，共 {total} 条 =====")
-    _update_progress(step=f"完成，共 {total} 条新闻")
+    _update_progress(step=f"RSS 写入完成（{total} 条），准备 Following…")
     return final_counts
 
 
@@ -189,13 +190,18 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
     db.refresh(run_record)
 
     now_cst = datetime.now(CST)
-    # 8 点前算前一天，8 点后算当天
-    target_date = (now_cst - timedelta(days=1)).date() if now_cst.hour < CUTOFF_HOUR else now_cst.date()
+    target_date = business_date(now_cst)
     day_start = now_cst - timedelta(hours=24)
     day_end = now_cst
     logger.info(f"===== 流水线开始：{target_date} =====")
     logger.info(f"抓取窗口：{day_start.strftime('%m-%d %H:%M')} ~ {day_end.strftime('%m-%d %H:%M')} CST")
-    _update_progress(running=True, categories_done=0)
+    _update_progress(
+        running=True,
+        categories_done=0,
+        step_index=0,
+        total_steps=TOTAL_PIPELINE_STEPS,
+        step="流水线启动中…",
+    )
 
     run_id = run_record.id
     try:
@@ -210,15 +216,39 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
             run_record = db.get(PipelineRun, run_id)
             assert run_record is not None
 
+        _update_progress(
+            step="正在抓取 X Following…",
+            step_index=TOTAL_PIPELINE_STEPS,
+        )
         following_result = {"status": "skipped", "written": 0, "error": None}
         try:
-            following_result = await run_following_branch(db, target_date, day_start, day_end)
+            following_result = await run_following_branch(
+                db,
+                target_date,
+                day_start,
+                day_end,
+                on_progress=lambda msg: _update_progress(
+                    step=msg,
+                    step_index=TOTAL_PIPELINE_STEPS,
+                ),
+            )
         except Exception as e:
             following_result = {"status": "error", "written": 0, "error": str(e)[:500]}
             logger.exception("Following branch failed")
             db.rollback()
             run_record = db.get(PipelineRun, run_id)
             assert run_record is not None
+
+        rss_total = sum(final_counts.values()) if final_counts else 0
+        fol_status = following_result.get("status")
+        fol_written = int(following_result.get("written") or 0)
+        if fol_status == "skipped":
+            done_msg = f"完成：RSS {rss_total} 条（Following 已跳过）"
+        elif fol_status == "error":
+            done_msg = f"完成：RSS {rss_total} 条；Following 失败"
+        else:
+            done_msg = f"完成：RSS {rss_total} 条 + Following {fol_written} 条"
+        _update_progress(step=done_msg, step_index=TOTAL_PIPELINE_STEPS)
 
         run_record.result = {**final_counts, "following": following_result}
         if rss_error:

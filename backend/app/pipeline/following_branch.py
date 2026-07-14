@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import date, datetime
 
 from sqlalchemy.orm import Session
@@ -34,14 +35,20 @@ async def run_following_branch(
     target_date: date,
     day_start: datetime,
     day_end: datetime,
+    on_progress: Callable[[str], None] | None = None,
 ) -> dict:
     """
     Following 旁路入口。
     返回 {status: "ok"|"skipped"|"error", written: int, error: str|None}。
     不写入 raw_articles。
     """
+    def _progress(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
     try:
         if not (settings.x_auth_token or "").strip() or not (settings.x_ct0 or "").strip():
+            _progress("Following 已跳过（未配置 Cookie）")
             return {"status": "skipped", "written": 0, "error": None}
 
         accounts = _enabled_following(db)
@@ -49,6 +56,7 @@ async def run_following_branch(
             # 仅当表为空时自动 sync；用户禁用全部账号则跳过，不覆盖
             if db.query(XAccount).count() == 0:
                 try:
+                    _progress("正在同步 X 关注列表…")
                     sync_following_accounts(db)
                     db.commit()
                 except Exception as e:
@@ -56,21 +64,32 @@ async def run_following_branch(
                     return {"status": "error", "written": 0, "error": str(e)[:500]}
                 accounts = _enabled_following(db)
             if not accounts:
+                _progress("Following 已跳过（无启用账号）")
                 return {"status": "skipped", "written": 0, "error": None}
 
         sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
         since_iso = day_start.isoformat()
         until_iso = day_end.isoformat()
+        n_accounts = len(accounts)
+        done_fetches = 0
+        fetch_progress_lock = asyncio.Lock()
 
         async def _fetch_one(account: XAccount) -> list[dict]:
+            nonlocal done_fetches
             async with sem:
-                return await asyncio.to_thread(
+                tweets = await asyncio.to_thread(
                     fetch_user_tweets,
                     account.handle,
                     since_iso,
                     until_iso,
                 )
+                async with fetch_progress_lock:
+                    done_fetches += 1
+                    current = done_fetches
+                _progress(f"正在抓取 X 推文… {current}/{n_accounts}")
+                return tweets
 
+        _progress(f"正在抓取 X 推文… 0/{n_accounts}")
         results = await asyncio.gather(
             *[_fetch_one(a) for a in accounts],
             return_exceptions=True,
@@ -100,6 +119,7 @@ async def run_following_branch(
             return {"status": "error", "written": 0, "error": err[:500]}
 
         filtered = filter_tweets(all_tweets)
+        _progress(f"AI 正在精选 Following（候选 {len(filtered)}）…")
         try:
             selected = select_tweets(filtered)[:_FINAL_TOP_N]
         except Exception as e:
@@ -120,6 +140,12 @@ async def run_following_branch(
                 "url": f"https://x.com/i/status/{t['tweet_id']}",
             })
 
+        # 与 RSS 无候选不 wipe 对齐：软空结果保留当日已有 Following
+        if not rows:
+            _progress("Following 无候选，跳过写入")
+            return {"status": "ok", "written": 0, "error": None}
+
+        _progress("正在写入 Following…")
         written = upsert_following_items(db, target_date=target_date, rows=rows)
         db.commit()
         return {"status": "ok", "written": written, "error": None}

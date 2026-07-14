@@ -1,6 +1,8 @@
 # 每日新闻早报网站
 
-每天 8:00 自动从 37 个 RSS 源拉取新闻，由 AI 大模型完成筛选、分类、摘要、观点提取和背景补充，按 8 个板块每板块 6 条呈现。支持多用户注册登录，每人独立收藏夹。
+每天 8:00（Asia/Shanghai）自动从约 37 个 RSS 源拉取新闻，由 AI 完成筛选、分类、摘要、观点提取和背景补充；另有 **X Following 旁路**，经 [bird](https://github.com/steipete/bird) 抓取关注账号推文并精选。首页按板块呈现（RSS 每板块最多 6 条 + Following 最多 6 条）。支持多用户注册登录与独立收藏夹。
+
+> **业务日**：与调度一致——上海时区 **08:00 前算前一天**。凌晨手动刷新写入的是「昨天」的早报日期；前后端 `today` / `today_count` 已按此对齐，避免 08:00 前空库连环触发。
 
 ---
 
@@ -15,9 +17,10 @@ http://82.156.105.34
 | 依赖 | 版本 |
 |------|------|
 | Python | 3.11+ |
-| Node.js | 18+ |
+| Node.js | 18+（Following / bird 需要；Docker 镜像已内置） |
 | npm | 9+ |
-| 代理工具 | 需本地 HTTP 代理（海外源拉取用） |
+| bird | `@steipete/bird`（全局或 `BIRD_BIN` 指向可执行文件） |
+| 代理工具 | 需本地 HTTP 代理（海外 RSS + X API） |
 
 > Windows / macOS / Linux 均可。
 
@@ -59,6 +62,12 @@ PROXY_URL=http://127.0.0.1:7897
 DATABASE_URL=sqlite:///./data/news.db
 RSSHUB_BASE_URL=http://localhost:1200
 RSSHUB_AUTO_START=true
+
+# X Following（可选；不配 Cookie 则旁路跳过）
+X_AUTH_TOKEN=
+X_CT0=
+BIRD_BIN=bird
+X_FOLLOWING_CANDIDATE_TOP_N=8
 ```
 
 | 变量 | 说明 | 默认值 |
@@ -66,10 +75,15 @@ RSSHUB_AUTO_START=true
 | `LLM_API_KEY` | AI 大模型 API 密钥 | （必填） |
 | `LLM_BASE_URL` | AI 大模型 API 地址 | `https://api.openai.com/v1` |
 | `LLM_MODEL` | 模型名称 | `gpt-4o-mini` |
-| `PROXY_URL` | HTTP 代理地址，海外源拉取用 | `http://127.0.0.1:7890` |
+| `PROXY_URL` | HTTP 代理（海外 RSS + bird 访问 X） | `http://127.0.0.1:7890` |
 | `DATABASE_URL` | SQLite 数据文件路径 | `sqlite:///./data/news.db` |
 | `RSSHUB_BASE_URL` | RSSHub 实例地址 | `http://localhost:1200` |
 | `RSSHUB_AUTO_START` | 流水线执行时自动启动 RSSHub | `true` |
+| `X_AUTH_TOKEN` / `X_CT0` | x.com Cookie（Following） | 空则跳过 Following |
+| `BIRD_BIN` | bird 可执行文件；Windows 常需 `bird.cmd` 绝对路径 | `bird` |
+| `X_FOLLOWING_CANDIDATE_TOP_N` | LLM 精选后候选上限（最终入库最多 6） | `8` |
+
+完整注释见 `backend/.env.example`。手动测 bird 时，Node 还需 `NODE_USE_ENV_PROXY=1` 与 `HTTPS_PROXY`（后端会从 `PROXY_URL` 注入）。
 
 ### 4. 启动
 
@@ -194,18 +208,24 @@ docker run -d --name rsshub -p 1200:1200 diygod/rsshub
 
 ## 流水线
 
-### 7 步流程
+### RSS 主线（7 步）+ Following 旁路
 
 ```
-RSS抓取 → 日期过滤 → AI分类 → 选择Top-8 → 全文提取 → AI摘要 → 写入数据库
+RSS: 抓取 → 日期过滤 → AI分类 → 选择Top-8 → 全文提取 → AI摘要 → 写入
+Following（并行旁路，不阻塞 RSS 成功态）:
+  sync 关注列表 → bird 拉推文 → 规则过滤 → LLM 精选打分 → upsert
 ```
+
+进度轮询为 **8 步**：1–7 为 RSS，第 8 步为 Following（含「抓取 n/N」文案）。RSS 失败则整次 `error`；仅 Following 失败时主线仍可 `success`，结果里带 `following.status`。
+
+`news_items` 按稳定键 **upsert**（收藏不因重跑被清空）；Following 无候选或硬失败时**不会 wipe** 当日已有 Following。
 
 详见 [docs/workflow.md](docs/workflow.md)。
 
 ### 触发方式
 
 - **自动**：每天 08:00（Asia/Shanghai）由 APScheduler 执行
-- **手动**：首页点击"立即抓取"按钮，或 `POST /api/admin/refresh`
+- **手动**：首页自动触发 / Admin「立即抓取」，或 `POST /api/admin/refresh`
 
 ### 运行状态
 
@@ -213,7 +233,7 @@ RSS抓取 → 日期过滤 → AI分类 → 选择Top-8 → 全文提取 → AI�
 GET /api/admin/status
 ```
 
----
+返回 `today_count`（业务日）、`pipeline_running`、`progress`（`step` / `step_index` / `total_steps=8`）等。
 
 ## RSS 源配置
 
@@ -233,7 +253,9 @@ GET /api/admin/status
 
 ---
 
-## 8 个板块
+## 板块
+
+RSS 仍为 8 个内容板块；另有 **Following**（X 关注流精选），不参与首页 Hero 竞选。
 
 | 板块 | 内容 |
 |------|------|
@@ -245,6 +267,11 @@ GET /api/admin/status
 | 金融投资 | 股市、投资机构、宏观经济、加密货币 |
 | 国际时政 | 地缘政治、外交事件、战争冲突 |
 | 社会人文 | 社会热点、民生问题、文化现象 |
+| Following | 关注账号推文精选（独立评分，非 RSS classifier） |
+
+Following 评分：规则去掉纯 RT / 过短文本后，由独立 LLM prompt 输出 `keep` + `score(0–100)` + 一句话摘要，按分排序入库（与 RSS `importance` 标尺不共用）。
+
+Admin 中可管理启用账号与手动同步关注列表（需管理员登录）。
 
 ---
 
@@ -263,7 +290,11 @@ GET /api/admin/status
 | POST | `/api/favorites` | 添加收藏 `{"news_item_id": 1}` | 需要 |
 | DELETE | `/api/favorites/{news_item_id}` | 取消收藏 | 需要 |
 | POST | `/api/admin/refresh` | 手动触发流水线 | - |
-| GET | `/api/admin/status` | 流水线运行状态 | - |
+| GET | `/api/admin/status` | 流水线运行状态 / 进度 | - |
+| GET | `/api/admin/x-following/accounts` | Following 账号列表 | 管理员 |
+| PATCH | `/api/admin/x-following/accounts/{id}` | 启用/禁用账号 | 管理员 |
+| POST | `/api/admin/x-following/sync` | 同步 X 关注列表 | 管理员 |
+| GET | `/api/admin/x-following/status` | Following Cookie / 同步状态 | 管理员 |
 
 > 需要认证的接口在 Header 中添加：`Authorization: Bearer <token>`
 
@@ -322,6 +353,18 @@ Favorite (id, user_id, news_item_id, favorited_at)
 ### 某板块不到 6 条
 
 正常现象。当天对应领域新闻不足、或部分摘要调用失败时会出现。
+
+### 08:00 前首页一直自动刷新
+
+已修复：业务日与日历日不一致时，`today_count` 与首页日期应对齐到「08:00 前算昨天」。若仍循环，确认前后端已拉取含 `business_date` / `todayStr` 的版本。
+
+### Following 为空或不更新
+
+1. `.env` 是否配置了有效的 `X_AUTH_TOKEN` / `X_CT0`
+2. `PROXY_URL` 可用；bird 能访问 x.com（Node 需代理环境变量）
+3. Windows 上 `BIRD_BIN` 是否指向真实的 `bird.cmd`
+4. Admin → X Following：账号是否启用；流水线结果里 `following.status` / `error`
+5. 纯转发账号会被规则过滤；LLM 精选失败时不会 wipe 旧数据，也不会写入新数据
 
 ---
 

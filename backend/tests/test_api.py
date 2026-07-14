@@ -3,6 +3,12 @@ API 冒烟测试：覆盖 health / categories / news / favorites / admin 全部�
 """
 from datetime import date
 
+from app.utils.timeutil import business_date
+
+
+def _biz() -> str:
+    return business_date().isoformat()
+
 
 class TestHealth:
     def test_health_ok(self, client):
@@ -26,9 +32,9 @@ class TestCategories:
             assert c["count"] == 0
 
     def test_counts_reflect_today_items(self, client, make_news):
-        make_news(category="ai", date=date.today().isoformat())
-        make_news(category="ai", date=date.today().isoformat())
-        make_news(category="tech", date=date.today().isoformat())
+        make_news(category="ai", date=_biz())
+        make_news(category="ai", date=_biz())
+        make_news(category="tech", date=_biz())
 
         resp = client.get("/api/categories")
         data = resp.json()
@@ -45,8 +51,8 @@ class TestNewsList:
         assert resp.json() == []
 
     def test_returns_today_items(self, client, make_news):
-        make_news(category="ai", title="AI News", date=date.today().isoformat())
-        make_news(category="ai", title="AI News 2", date=date.today().isoformat())
+        make_news(category="ai", title="AI News", date=_biz())
+        make_news(category="ai", title="AI News 2", date=_biz())
 
         resp = client.get("/api/news")
         data = resp.json()
@@ -55,8 +61,8 @@ class TestNewsList:
         assert data[0]["is_favorited"] is False
 
     def test_filter_by_category(self, client, make_news):
-        make_news(category="ai", title="AI", date=date.today().isoformat())
-        make_news(category="tech", title="Tech", date=date.today().isoformat())
+        make_news(category="ai", title="AI", date=_biz())
+        make_news(category="tech", title="Tech", date=_biz())
 
         resp = client.get("/api/news?category=tech")
         data = resp.json()
@@ -64,7 +70,7 @@ class TestNewsList:
         assert data[0]["title"] == "Tech"
 
     def test_filter_by_date(self, client, make_news):
-        make_news(category="ai", title="Today", date=date.today().isoformat())
+        make_news(category="ai", title="Today", date=_biz())
         make_news(category="ai", title="Yesterday", date="2026-05-08")
 
         resp = client.get("/api/news?date=2026-05-08")
@@ -74,14 +80,14 @@ class TestNewsList:
 
     def test_limit_6_per_category(self, client, make_news):
         for i in range(8):
-            make_news(category="ai", title=f"News {i}", importance=80 - i, date=date.today().isoformat())
+            make_news(category="ai", title=f"News {i}", importance=80 - i, date=_biz())
 
         resp = client.get("/api/news?category=ai")
         data = resp.json()
         assert len(data) == 6
 
     def test_marks_favorited(self, client, make_news):
-        item = make_news(category="ai", date=date.today().isoformat())
+        item = make_news(category="ai", date=_biz())
         client.post("/api/favorites", json={"news_item_id": item.id})
 
         resp = client.get("/api/news")
@@ -91,7 +97,7 @@ class TestNewsList:
 
 class TestNewsDetail:
     def test_returns_full_detail(self, client, make_news):
-        item = make_news(category="ai", title="Detail Test", date=date.today().isoformat())
+        item = make_news(category="ai", title="Detail Test", date=_biz())
 
         resp = client.get(f"/api/news/{item.id}")
         assert resp.status_code == 200
@@ -109,7 +115,7 @@ class TestNewsDetail:
 
 class TestFavorites:
     def test_add_favorite(self, client, make_news):
-        item = make_news(date=date.today().isoformat())
+        item = make_news(date=_biz())
 
         resp = client.post("/api/favorites", json={"news_item_id": item.id})
         assert resp.status_code == 200
@@ -117,7 +123,7 @@ class TestFavorites:
         assert "id" in data
 
     def test_add_duplicate_returns_existing(self, client, make_news):
-        item = make_news(date=date.today().isoformat())
+        item = make_news(date=_biz())
         client.post("/api/favorites", json={"news_item_id": item.id})
         resp = client.post("/api/favorites", json={"news_item_id": item.id})
         assert resp.status_code == 200
@@ -127,7 +133,7 @@ class TestFavorites:
         assert resp.status_code == 404
 
     def test_remove_favorite(self, client, make_news):
-        item = make_news(date=date.today().isoformat())
+        item = make_news(date=_biz())
         client.post("/api/favorites", json={"news_item_id": item.id})
 
         resp = client.delete(f"/api/favorites/{item.id}")
@@ -139,7 +145,7 @@ class TestFavorites:
         assert resp.status_code == 404
 
     def test_list_favorites(self, client, make_news):
-        item = make_news(date=date.today().isoformat())
+        item = make_news(date=_biz())
         client.post("/api/favorites", json={"news_item_id": item.id})
 
         resp = client.get("/api/favorites")

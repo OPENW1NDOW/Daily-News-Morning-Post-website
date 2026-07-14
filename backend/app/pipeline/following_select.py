@@ -15,8 +15,8 @@ _SYSTEM_PROMPT = """你是一位资深编辑，负责从 X（Twitter）关注流
 
 用户会给你一批推文（JSON 数组），每条有 tweet_id、handle、text。
 
-请对每条输出评估结果，严格返回 JSON 数组，每个元素格式：
-{"tweet_id": "<原始tweet_id>", "keep": <true或false>, "summary": "<一句话中文摘要>", "score": <0-100整数>}
+请对每条输出评估结果。必须返回一个 JSON 对象（不要顶层数组），格式：
+{"items": [{"tweet_id": "<原始tweet_id>", "keep": <true或false>, "summary": "<一句话中文摘要>", "score": <0-100整数>}, ...]}
 
 精选偏好（优先 keep=true 且高分）：
 - AI / Agent / LLM / 大模型相关的有信息量内容
@@ -31,7 +31,7 @@ _SYSTEM_PROMPT = """你是一位资深编辑，负责从 X（Twitter）关注流
 规则：
 1. summary 必须基于原文，禁止编造
 2. score 反映对 Following 板块读者的价值（AI/Agent/LLM 向加权）
-3. 只返回 JSON 数组，不要任何解释文字
+3. 只返回上述 JSON 对象，不要任何解释文字
 """
 
 
@@ -73,6 +73,31 @@ def _extract_json(text: str):
     return None
 
 
+def _coerce_results_list(parsed) -> list | None:
+    """把 json_object 各种包装形态压成评估结果列表。"""
+    if isinstance(parsed, list):
+        return parsed
+    if not isinstance(parsed, dict):
+        return None
+    # 单条评估对象
+    if "tweet_id" in parsed and ("keep" in parsed or "score" in parsed or "summary" in parsed):
+        return [parsed]
+    # {"items": [...]} / {"results": [...]} 等
+    for v in parsed.values():
+        if isinstance(v, list):
+            return v
+    # {"id1": {...}, "id2": {...}}
+    values = list(parsed.values())
+    if values and all(isinstance(v, dict) for v in values):
+        rows = []
+        for key, val in parsed.items():
+            row = dict(val)
+            row.setdefault("tweet_id", key)
+            rows.append(row)
+        return rows
+    return None
+
+
 def _select_batch(items: list[dict]) -> list[dict]:
     """对一批推文调用 LLM，返回含 tweet_id/keep/summary/score 的列表。API/解析失败抛异常。"""
     payload = json.dumps(items, ensure_ascii=False)
@@ -88,15 +113,16 @@ def _select_batch(items: list[dict]) -> list[dict]:
     content = resp.choices[0].message.content
     parsed = _extract_json(content)
     if parsed is None:
-        logger.warning(f"无法从 LLM 响应中提取 JSON: {content[:200]}")
+        logger.warning(f"无法从 LLM 响应中提取 JSON: {content[:300] if content else ''}")
         raise RuntimeError("Following select JSON parse failed")
-    if isinstance(parsed, list):
-        return parsed
-    for v in parsed.values():
-        if isinstance(v, list):
-            return v
-    logger.warning("精选响应格式异常，无法解析为列表")
-    raise RuntimeError("Following select response format invalid")
+    results = _coerce_results_list(parsed)
+    if results is None:
+        logger.warning(
+            "精选响应格式异常，无法解析为列表: %s",
+            (content[:300] if content else repr(parsed)),
+        )
+        raise RuntimeError("Following select response format invalid")
+    return results
 
 
 def select_tweets(tweets: list[dict]) -> list[dict]:

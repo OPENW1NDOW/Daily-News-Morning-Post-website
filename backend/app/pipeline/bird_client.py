@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from app.config import settings
@@ -23,23 +25,63 @@ def _require_auth() -> None:
         raise BirdAuthError("missing x_auth_token or x_ct0")
 
 
+def _resolve_bird_bin() -> str:
+    """解析 bird 可执行文件。uvicorn PATH 常不含 npm 全局目录。"""
+    configured = (settings.bird_bin or "bird").strip() or "bird"
+    if os.path.isfile(configured):
+        return configured
+    found = shutil.which(configured)
+    if found:
+        return found
+    # Windows：npm -g 装的 bird.cmd 常在 %APPDATA%\npm，但后端进程 PATH 没有它
+    if os.name == "nt" and Path(configured).name in ("bird", "bird.cmd", "bird.ps1"):
+        npm_dir = Path(os.environ.get("APPDATA", "")) / "npm"
+        for name in ("bird.cmd", "bird.exe", "bird"):
+            candidate = npm_dir / name
+            if candidate.is_file():
+                return str(candidate)
+    return configured
+
+
 def _auth_env() -> dict[str, str]:
+    """注入 Cookie + 代理。Node fetch 默认不读 HTTP(S)_PROXY，须 NODE_USE_ENV_PROXY=1。"""
     env = os.environ.copy()
     env["AUTH_TOKEN"] = settings.x_auth_token
     env["CT0"] = settings.x_ct0
+    # 浏览器能上 x.com ≠ Node/bird 能连；国内代理场景必开
+    env["NODE_USE_ENV_PROXY"] = "1"
+    proxy = (settings.proxy_url or "").strip()
+    if proxy:
+        env["HTTP_PROXY"] = proxy
+        env["HTTPS_PROXY"] = proxy
+        env["ALL_PROXY"] = proxy
+    # 确保子进程也能找到 npm 全局 bin（bird.cmd 会再调 node）
+    npm_bin = str(Path(os.environ.get("APPDATA", "")) / "npm")
+    path = env.get("PATH", "")
+    if npm_bin and npm_bin not in path:
+        env["PATH"] = npm_bin + os.pathsep + path
     return env
 
 
 def _run_bird(args: list[str], *, timeout: int) -> Any:
     _require_auth()
-    completed = subprocess.run(
-        [settings.bird_bin, *args],
-        capture_output=True,
-        text=True,
-        env=_auth_env(),
-        timeout=timeout,
-        check=False,
-    )
+    bird_bin = _resolve_bird_bin()
+    try:
+        completed = subprocess.run(
+            [bird_bin, *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_auth_env(),
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            f"bird executable not found ({bird_bin!r}). "
+            "Install @steipete/bird globally or set BIRD_BIN to absolute path of bird.cmd"
+        ) from e
     if completed.returncode != 0:
         err = (completed.stderr or completed.stdout or "").strip()
         raise RuntimeError(f"bird failed ({completed.returncode}): {err}")
@@ -97,11 +139,18 @@ def list_following() -> list[dict]:
     return [_normalize_user(u) for u in users]
 
 
+# bird/X 常用两种时间：ISO8601，或 Twitter 经典 "Mon Jul 13 13:42:15 +0000 2026"
+_TWITTER_CREATED_AT = "%a %b %d %H:%M:%S %z %Y"
+
+
 def _parse_dt(value: str) -> datetime:
     text = value.strip()
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
-    dt = datetime.fromisoformat(text)
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        dt = datetime.strptime(text, _TWITTER_CREATED_AT)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt

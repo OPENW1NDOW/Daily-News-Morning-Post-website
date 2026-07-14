@@ -34,8 +34,12 @@ def init_db():
     # 安全添加新列（已有则跳过）
     import sqlalchemy as sa
     with engine.connect() as conn:
-        try:
-            conn.execute(sa.text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
-            conn.commit()
-        except Exception:
-            pass  # 列已存在
+        for stmt in (
+            "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0",
+            "ALTER TABLE favorites ADD COLUMN user_id INTEGER",
+        ):
+            try:
+                conn.execute(sa.text(stmt))
+                conn.commit()
+            except Exception:
+                pass  # 列已存在
