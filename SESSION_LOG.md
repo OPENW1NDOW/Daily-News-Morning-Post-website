@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-07-14 — 生产服务器部署 Following + 最新 main
+
+### 做了什么
+- SSH 密钥登录：本机 `id_ed25519` 写入服务器 `authorized_keys`（需 `-i` + `IdentitiesOnly=yes`）
+- 服务器 `/opt/news-website`：`git pull` `f8e4a3a` → `4fdb9e1`（落后 23 commits）
+- 更新生产 `backend/.env`：`X_AUTH_TOKEN`/`X_CT0`、`PROXY_URL=http://host.docker.internal:7897`、`RSSHUB_BASE_URL=http://rsshub:1200`、`RSSHUB_AUTO_START=false`、`BIRD_BIN=bird`
+- `DOCKER_BUILDKIT=0 docker-compose up -d --build`；backend 镜像内装 Node20 + bird@0.8.0
+
+### 验证
+- 四容器 healthy；`/api/health` ok；首页/admin HTTP 200；容器内 `bird --version` → 0.8.0
+- 构建时 bird 警告要求 Node>=22（当前 20），已安装可用，后续可升 Node 22
+
+### 遗留
+- 未在生产手动触发 refresh 验证 Following 写入；Cookie 曾在对话中明文传递，必要时轮换
+- SSH 暴力尝试计数很高，建议后续密钥-only / fail2ban
+
+### 相关
+- 服务器路径 `/opt/news-website`；宿主机 mihomo 监听 7897
+
+---
+
 ## 2026-07-14 — commit：Following 稳定性修复 + 业务日 + README
 
 ### 做了什么
