@@ -14,9 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 
-# Node + bird（X Following）
+# Node 22+ bird（X Following）。须 >=22.21：bird engines 要求 Node>=22，
+# 且 NODE_USE_ENV_PROXY（bird_client 注入代理）仅在 Node 22.21+ 对 fetch 生效。
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @steipete/bird@0.8.0 \
     && rm -rf /var/lib/apt/lists/*

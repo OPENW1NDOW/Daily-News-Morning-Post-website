@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-07-14 — 生产 Following 空：Node20 代理失效
+
+### 做了什么
+- 排查生产 `following: error`：`bird failed … Failed to get current user: fetch failed`
+- **不是**本地日期解析 / select JSON 问题；Cookie、PROXY_URL、mihomo 均正常；`curl -x proxy → x.com` 返回 200
+- 根因：镜像 Node **20**；bird 要求 ≥22；`NODE_USE_ENV_PROXY`（bird_client 注入）仅 Node **22.21+** 对 fetch 生效 → bird 直连失败
+- 对照：本机 Node v24.15.0，故本地可通
+- 修复：`backend/Dockerfile` `setup_20.x` → `setup_22.x`；服务器 rebuild；probe `following_count=21`
+- 单独跑 Following 旁路：`written: 6`
+
+### 相关文件
+- `backend/Dockerfile`
+
+### 遗留
+- Dockerfile 改动需 commit/push；服务器已热修，与 Git 可能短暂不一致直到 push+pull
+
+---
+
 ## 2026-07-14 — 生产服务器部署 Following + 最新 main
 
 ### 做了什么
