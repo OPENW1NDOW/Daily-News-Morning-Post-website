@@ -5,15 +5,12 @@
 支持并发处理（默认 5 个并发）。
 """
 import json
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import OpenAI
-from ..config import settings
 from ..utils.logger import get_logger
+from .llm import chat_json
 
 logger = get_logger(__name__)
 
-_client = None
 _BATCH_SIZE = 60
 
 CATEGORIES = [
@@ -120,87 +117,29 @@ _SYSTEM_PROMPT = f"""你是一位资深新闻编辑，负责新闻的分类与�
 只返回 JSON 数组，不要任何解释文字"""
 
 
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
-    return _client
-
-
-def _extract_json(text: str):
-    """从 LLM 响应中提取 JSON，处理 markdown 代码块、NDJSON 和额外文本。"""
-    # 尝试直接解析
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    # 提取 markdown 代码块中的 JSON
-    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    # 提取第一个 [ ... ]
-    m = re.search(r"\[.*\]", text, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group())
-        except json.JSONDecodeError:
-            pass
-    # NDJSON：每行一个 JSON 对象
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip().startswith("{")]
-    if lines:
-        result = []
-        for line in lines:
-            try:
-                result.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        if result:
-            return result
-    return None
-
-
 def _classify_batch(items: list[dict]) -> list[dict]:
     """对一批条目（含 id/title/summary）调用 LLM，返回分类结果列表。失败返回空列表。"""
     payload = json.dumps(items, ensure_ascii=False)
-    try:
-        resp = _get_client().chat.completions.create(
-            model=settings.llm_model,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": payload},
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"},
-        )
-        content = resp.choices[0].message.content
-        parsed = _extract_json(content)
-        if parsed is None:
-            logger.warning(f"无法从 LLM 响应中提取 JSON: {content[:200]}")
-            return []
-        # 部分模型 json_object 模式可能把数组包在某个 key 下
-        if isinstance(parsed, list):
-            return parsed
-        # 尝试找第一个 list 值
-        for v in parsed.values():
-            if isinstance(v, list):
-                return v
-        logger.warning("分类响应格式异常，无法解析为列表")
-        return []
-    except Exception as e:
-        logger.warning(f"批量分类失败（{len(items)} 条）: {e}")
-        return []
+    results = chat_json(
+        [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": payload},
+        ],
+        temperature=0.1,
+        expect="list",
+        log_tag="classify",
+    )
+    return results if results is not None else []
 
 
-def classify_articles(db, articles: list, max_workers: int = 5) -> int:
+def classify_articles(db, articles: list, max_workers: int = 5) -> tuple[int, int]:
     """
     对 raw_articles 列表批量分类，更新 category/importance 字段。
     支持并发处理，默认 5 个并发。
-    返回成功分类的条数。
+    返回 (成功分类的条数, 最终失败的批次数)。
     """
     total_classified = 0
+    failed_batches = 0
 
     # 准备所有批次
     batches = []
@@ -230,6 +169,7 @@ def classify_articles(db, articles: list, max_workers: int = 5) -> int:
             try:
                 results = future.result()
                 if not results:
+                    failed_batches += 1
                     logger.warning(f"批次 {batch_start}-{batch_start+len(batch)} 分类失败，跳过")
                     continue
 
@@ -255,9 +195,10 @@ def classify_articles(db, articles: list, max_workers: int = 5) -> int:
 
                 logger.info(f"分类批次 {batch_start//_BATCH_SIZE + 1}：{len(results)} 条完成")
             except Exception as e:
+                failed_batches += 1
                 logger.warning(f"批次 {batch_start}-{batch_start+len(batch)} 处理异常: {e}")
 
     # 所有批次处理完后统一提交数据库
     db.commit()
-    logger.info(f"全部分类完成：{total_classified}/{len(articles)} 条")
-    return total_classified
+    logger.info(f"全部分类完成：{total_classified}/{len(articles)} 条，失败批次 {failed_batches} 个")
+    return total_classified, failed_batches

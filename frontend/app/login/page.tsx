@@ -1,14 +1,15 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { api } from "@/lib/api"
 import { setToken } from "@/lib/auth"
 import { SamoyedAvatar } from "@/components/SamoyedAvatar"
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isLogin, setIsLogin] = useState(true)
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
@@ -24,10 +25,12 @@ export default function LoginPage() {
         ? await api.login(username, password)
         : await api.register(username, password)
       setToken(res.token)
-      router.push("/")
+      const next = searchParams.get("next")
+      // 只允许站内路径，防止开放重定向
+      router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "操作失败")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作失败")
     } finally {
       setLoading(false)
     }
@@ -56,7 +59,7 @@ export default function LoginPage() {
               required
               minLength={2}
               maxLength={20}
-              className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-[14px] text-[#0F0F0F] placeholder:text-[#A3A3A3] focus:outline-none focus:border-stone-400 transition-colors"
+              className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-[14px] text-[#0F0F0F] placeholder:text-[#A3A3A3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-1 transition-colors"
             />
           </div>
           <div>
@@ -67,7 +70,7 @@ export default function LoginPage() {
               placeholder="密码"
               required
               minLength={4}
-              className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-[14px] text-[#0F0F0F] placeholder:text-[#A3A3A3] focus:outline-none focus:border-stone-400 transition-colors"
+              className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-[14px] text-[#0F0F0F] placeholder:text-[#A3A3A3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-1 transition-colors"
             />
           </div>
 
@@ -101,5 +104,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

@@ -13,6 +13,11 @@ build/
 *.env
 .env.local
 
+# 敏感/打包文件（曾泄漏过真实密钥，禁止入库）
+*.tar.gz
+*.tgz
+setup_proxy.sh
+
 # 数据库
 backend/data/*.db
 backend/data/*.db-shm

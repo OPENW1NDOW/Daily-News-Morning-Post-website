@@ -1,6 +1,6 @@
-"""LLM 精选 Following 推文：mock OpenAI，验证 keep/score 排序与截断。"""
+"""LLM 精选 Following 推文：mock llm 公共层客户端，验证 keep/score 排序与截断。"""
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -27,6 +27,10 @@ def _mock_client(content: str) -> MagicMock:
     return mock_client
 
 
+def _patch_client(monkeypatch, mock_client):
+    monkeypatch.setattr("app.pipeline.llm.get_client", lambda: mock_client)
+
+
 def test_accepts_items_wrapped_object(monkeypatch):
     """json_object 模式常见包装：{"items": [...]}"""
     tweets = [_tweet("a"), _tweet("b")]
@@ -36,7 +40,7 @@ def test_accepts_items_wrapped_object(monkeypatch):
             {"tweet_id": "b", "keep": True, "summary": "B", "score": 90},
         ]
     })
-    monkeypatch.setattr(mod, "_get_client", lambda: _mock_client(payload))
+    _patch_client(monkeypatch, _mock_client(payload))
     result = mod.select_tweets(tweets)
     assert [r["tweet_id"] for r in result] == ["b", "a"]
 
@@ -46,22 +50,24 @@ def test_accepts_single_object_as_one_result(monkeypatch):
     payload = json.dumps({
         "tweet_id": "only", "keep": True, "summary": "单条", "score": 88,
     })
-    monkeypatch.setattr(mod, "_get_client", lambda: _mock_client(payload))
+    _patch_client(monkeypatch, _mock_client(payload))
     result = mod.select_tweets(tweets)
     assert len(result) == 1
     assert result[0]["tweet_id"] == "only"
     assert result[0]["score"] == 88
 
 
-def test_accepts_id_keyed_object_map(monkeypatch):
+def test_id_keyed_object_map_degrades_gracefully(monkeypatch):
+    """{"id": {...}} 字典嵌套形态已被提示词禁止，llm.extract_json 不再兼容：
+    整体被当作单对象包装，缺 keep 字段被过滤，结果为空但不抛异常。"""
     tweets = [_tweet("1"), _tweet("2")]
     payload = json.dumps({
         "1": {"tweet_id": "1", "keep": True, "summary": "一", "score": 60},
         "2": {"tweet_id": "2", "keep": False, "summary": "二", "score": 99},
     })
-    monkeypatch.setattr(mod, "_get_client", lambda: _mock_client(payload))
+    _patch_client(monkeypatch, _mock_client(payload))
     result = mod.select_tweets(tweets)
-    assert [r["tweet_id"] for r in result] == ["1"]
+    assert result == []
 
 
 def test_prompt_requests_items_wrapper(monkeypatch):
@@ -70,7 +76,7 @@ def test_prompt_requests_items_wrapper(monkeypatch):
         {"tweet_id": "1", "keep": True, "summary": "ok", "score": 80},
     ]})
     mock_client = _mock_client(payload)
-    monkeypatch.setattr(mod, "_get_client", lambda: mock_client)
+    _patch_client(monkeypatch, mock_client)
     mod.select_tweets(tweets)
     system = mock_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     assert '"items"' in system or "items" in system
@@ -83,7 +89,7 @@ def test_truncates_to_top_n(monkeypatch):
         for i in range(10)
     ]
     mock_client = _mock_client(json.dumps(items))
-    monkeypatch.setattr(mod, "_get_client", lambda: mock_client)
+    _patch_client(monkeypatch, mock_client)
     monkeypatch.setattr(mod.settings, "x_following_candidate_top_n", 8)
 
     result = mod.select_tweets(tweets)
@@ -99,7 +105,7 @@ def test_temperature_is_low(monkeypatch):
         {"tweet_id": "1", "keep": True, "summary": "ok", "score": 80},
     ])
     mock_client = _mock_client(payload)
-    monkeypatch.setattr(mod, "_get_client", lambda: mock_client)
+    _patch_client(monkeypatch, mock_client)
 
     mod.select_tweets(tweets)
 
@@ -109,15 +115,16 @@ def test_temperature_is_low(monkeypatch):
 
 def test_empty_input_returns_empty(monkeypatch):
     mock_client = MagicMock()
-    monkeypatch.setattr(mod, "_get_client", lambda: mock_client)
+    _patch_client(monkeypatch, mock_client)
     assert mod.select_tweets([]) == []
     mock_client.chat.completions.create.assert_not_called()
 
 
 def test_api_error_raises(monkeypatch):
+    """llm 层对非限流异常不重试并返回 None，_select_batch 将其升级为硬异常。"""
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = Exception("API timeout")
-    monkeypatch.setattr(mod, "_get_client", lambda: mock_client)
+    _patch_client(monkeypatch, mock_client)
 
-    with pytest.raises(Exception, match="API timeout"):
+    with pytest.raises(RuntimeError, match="Following select LLM call failed"):
         mod.select_tweets([_tweet("1")])

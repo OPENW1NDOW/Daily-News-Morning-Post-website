@@ -3,7 +3,7 @@ import type {
   PipelineRun, SourceDetail, AdminUser, CategoryConfig, SystemSettings, AdminNewsItem,
   PipelineProgress, XAccount, XFollowingStatus,
 } from "./types"
-import { getToken } from "./auth"
+import { getToken, clearToken } from "./auth"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -17,8 +17,9 @@ function authHeaders(init?: RequestInit): RequestInit {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, authHeaders(init))
-  if (res.status === 404) return [] as unknown as T
   if (!res.ok) {
+    // token 过期或无效时清掉本地凭证，避免后续请求继续携带脏 token
+    if (res.status === 401) clearToken()
     let msg = `${res.status} ${res.statusText}`
     try {
       const body = await res.json()
@@ -34,20 +35,20 @@ export const api = {
 
   // 认证
   register: (username: string, password: string) =>
-    request<{ token: string; user: { id: number; username: string; is_admin: boolean } }>("/api/auth/register", {
+    request<{ token: string; user: UserProfile }>("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     }),
 
   login: (username: string, password: string) =>
-    request<{ token: string; user: { id: number; username: string; is_admin: boolean } }>("/api/auth/login", {
+    request<{ token: string; user: UserProfile }>("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     }),
 
-  getMe: () => request<{ id: number; username: string; is_admin: boolean }>("/api/auth/me"),
+  getMe: () => request<UserProfile>("/api/auth/me"),
 
   // 新闻
   getCategories: (date?: string) => {

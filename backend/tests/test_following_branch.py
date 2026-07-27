@@ -139,7 +139,7 @@ def test_rss_dirty_session_still_allows_following_upsert(db, monkeypatch):
 
 def test_bird_failure_does_not_fail_mainline(db, monkeypatch):
     async def rss_ok(*_a, **_k):
-        return {}
+        return {}, 0
 
     async def following_boom(*_a, **_k):
         raise BirdAuthError("bad cookie")

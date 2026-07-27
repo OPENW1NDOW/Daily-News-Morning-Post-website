@@ -1,6 +1,9 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from .config import settings
+from .utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 engine = create_engine(
     settings.database_url,
@@ -11,6 +14,7 @@ engine = create_engine(
 @event.listens_for(engine, "connect")
 def set_wal_mode(dbapi_conn, _):
     dbapi_conn.execute("PRAGMA journal_mode=WAL")
+    dbapi_conn.execute("PRAGMA busy_timeout=5000")
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -41,5 +45,9 @@ def init_db():
             try:
                 conn.execute(sa.text(stmt))
                 conn.commit()
-            except Exception:
-                pass  # 列已存在
+            except Exception as e:
+                # 回滚使连接脱离失效事务，否则后续语句抛 PendingRollbackError
+                conn.rollback()
+                if "duplicate column" in str(e).lower():
+                    continue  # 列已存在，预期内
+                logger.error(f"启动迁移语句执行失败（不中断启动）: {stmt} -> {e}")

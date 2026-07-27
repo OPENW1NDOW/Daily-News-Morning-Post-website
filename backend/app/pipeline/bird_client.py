@@ -84,7 +84,12 @@ def _run_bird(args: list[str], *, timeout: int) -> Any:
         ) from e
     if completed.returncode != 0:
         err = (completed.stderr or completed.stdout or "").strip()
-        raise RuntimeError(f"bird failed ({completed.returncode}): {err}")
+        # stderr 可能回显环境中的 Cookie 凭证，拼进异常前先脱敏并截断
+        for secret in (settings.x_auth_token, settings.x_ct0):
+            secret = (secret or "").strip()
+            if secret:
+                err = err.replace(secret, "****")
+        raise RuntimeError(f"bird failed ({completed.returncode}): {err[:500]}")
     stdout = (completed.stdout or "").strip()
     if not stdout:
         return []

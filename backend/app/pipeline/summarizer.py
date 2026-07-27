@@ -1,21 +1,4 @@
-import json
-import re
-import time
-from openai import OpenAI
-from ..config import settings
-from ..utils.logger import get_logger
-
-logger = get_logger(__name__)
-
-_client = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
-    return _client
-
+from .llm import chat_json
 
 _SYSTEM_PROMPT = """你是一位专业新闻编辑，负责对新闻进行摘要、总结和观点提炼。用户会给你一篇新闻的标题和正文，请输出严格的 JSON，不要有任何多余文字。
 
@@ -42,59 +25,15 @@ JSON 格式：
 - 全部使用中文"""
 
 
-def _extract_json(text: str) -> dict | None:
-    """从 LLM 响应中提取 JSON 对象，处理 markdown 代码块和额外文本。"""
-    def _try_parse(s):
-        obj = json.loads(s)
-        return obj if isinstance(obj, dict) else None
-
-    try:
-        return _try_parse(text)
-    except json.JSONDecodeError:
-        pass
-    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if m:
-        try:
-            return _try_parse(m.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    for pattern in [r"\{.*\}", r"\[.*\]"]:
-        m = re.search(pattern, text, re.DOTALL)
-        if m:
-            try:
-                return _try_parse(m.group())
-            except json.JSONDecodeError:
-                pass
-    return None
-
-
-def summarize(title: str, text: str, max_retries: int = 3) -> dict | None:
-    """对单篇文章生成摘要，失败返回 None。429 限流时指数退避重试。"""
+def summarize(title: str, text: str) -> dict | None:
+    """对单篇文章生成摘要，失败返回 None。限流与瞬时错误由 llm 公共层统一重试。"""
     prompt = f"标题：{title}\n\n正文：{text[:3000]}"
-    for attempt in range(max_retries):
-        try:
-            resp = _get_client().chat.completions.create(
-                model=settings.llm_model,
-                messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-                response_format={"type": "json_object"},
-            )
-            content = resp.choices[0].message.content
-            result = _extract_json(content)
-            if result is None:
-                logger.warning(f"无法从摘要响应中提取 JSON [{title[:30]}]: {content[:200]}")
-            return result
-        except Exception as e:
-            is_429 = "429" in str(e)
-            if is_429 and attempt < max_retries - 1:
-                wait = 2 ** (attempt + 1)  # 2s, 4s
-                logger.info(f"摘要限流，等待 {wait}s 后重试 [{title[:30]}]")
-                time.sleep(wait)
-                continue
-            logger.warning(f"摘要失败 [{title[:30]}]: {e}")
-            return None
-
-
+    return chat_json(
+        [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+        expect="dict",
+        log_tag=title[:30],
+    )

@@ -1,4 +1,5 @@
 """认证依赖：JWT 解析、用户获取。"""
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -8,10 +9,18 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
 from ..models import User
+from ..utils.logger import get_logger
 
-SECRET_KEY = "cooper-news-secret-key-change-in-production"
+logger = get_logger(__name__)
+
+if settings.jwt_secret:
+    SECRET_KEY = settings.jwt_secret
+else:
+    SECRET_KEY = secrets.token_urlsafe(48)
+    logger.warning("JWT_SECRET 未配置，使用临时密钥，重启后所有登录失效")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 天
 

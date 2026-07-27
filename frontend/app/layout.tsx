@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Fraunces, Geist_Mono } from "next/font/google";
+// 自托管中文衬线字体，构建时打进产物，大陆环境无外部字体请求
+import "@fontsource/noto-serif-sc/chinese-simplified-400.css";
+import "@fontsource/noto-serif-sc/chinese-simplified-700.css";
 import "./globals.css";
 
 const inter = Inter({

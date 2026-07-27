@@ -1,8 +1,9 @@
 """
 API 冒烟测试：覆盖 health / categories / news / favorites / admin 全部端点。
 """
-from datetime import date
+from datetime import date, datetime, timezone
 
+from app.models import PipelineRun
 from app.utils.timeutil import business_date
 
 
@@ -86,11 +87,11 @@ class TestNewsList:
         data = resp.json()
         assert len(data) == 6
 
-    def test_marks_favorited(self, client, make_news):
+    def test_marks_favorited(self, client, make_news, user_headers):
         item = make_news(category="ai", date=_biz())
-        client.post("/api/favorites", json={"news_item_id": item.id})
+        client.post("/api/favorites", json={"news_item_id": item.id}, headers=user_headers)
 
-        resp = client.get("/api/news")
+        resp = client.get("/api/news", headers=user_headers)
         data = resp.json()
         assert data[0]["is_favorited"] is True
 
@@ -114,53 +115,59 @@ class TestNewsDetail:
 
 
 class TestFavorites:
-    def test_add_favorite(self, client, make_news):
+    def test_add_favorite(self, client, make_news, user_headers):
         item = make_news(date=_biz())
 
-        resp = client.post("/api/favorites", json={"news_item_id": item.id})
+        resp = client.post("/api/favorites", json={"news_item_id": item.id}, headers=user_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "id" in data
 
-    def test_add_duplicate_returns_existing(self, client, make_news):
+    def test_add_duplicate_returns_existing(self, client, make_news, user_headers):
         item = make_news(date=_biz())
-        client.post("/api/favorites", json={"news_item_id": item.id})
-        resp = client.post("/api/favorites", json={"news_item_id": item.id})
+        client.post("/api/favorites", json={"news_item_id": item.id}, headers=user_headers)
+        resp = client.post("/api/favorites", json={"news_item_id": item.id}, headers=user_headers)
         assert resp.status_code == 200
 
-    def test_add_nonexistent_news_returns_404(self, client):
-        resp = client.post("/api/favorites", json={"news_item_id": 99999})
+    def test_add_nonexistent_news_returns_404(self, client, user_headers):
+        resp = client.post("/api/favorites", json={"news_item_id": 99999}, headers=user_headers)
         assert resp.status_code == 404
 
-    def test_remove_favorite(self, client, make_news):
+    def test_remove_favorite(self, client, make_news, user_headers):
         item = make_news(date=_biz())
-        client.post("/api/favorites", json={"news_item_id": item.id})
+        client.post("/api/favorites", json={"news_item_id": item.id}, headers=user_headers)
 
-        resp = client.delete(f"/api/favorites/{item.id}")
+        resp = client.delete(f"/api/favorites/{item.id}", headers=user_headers)
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
 
-    def test_remove_nonexistent_returns_404(self, client):
-        resp = client.delete("/api/favorites/99999")
+    def test_remove_nonexistent_returns_404(self, client, user_headers):
+        resp = client.delete("/api/favorites/99999", headers=user_headers)
         assert resp.status_code == 404
 
-    def test_list_favorites(self, client, make_news):
+    def test_list_favorites(self, client, make_news, user_headers):
         item = make_news(date=_biz())
-        client.post("/api/favorites", json={"news_item_id": item.id})
+        client.post("/api/favorites", json={"news_item_id": item.id}, headers=user_headers)
 
-        resp = client.get("/api/favorites")
+        resp = client.get("/api/favorites", headers=user_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
         assert len(data["items"]) == 1
         assert data["items"][0]["is_favorited"] is True
 
-    def test_list_empty(self, client):
-        resp = client.get("/api/favorites")
+    def test_list_empty(self, client, user_headers):
+        resp = client.get("/api/favorites", headers=user_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 0
         assert data["items"] == []
+
+    def test_anonymous_returns_401(self, client, make_news):
+        item = make_news(date=_biz())
+        assert client.post("/api/favorites", json={"news_item_id": item.id}).status_code == 401
+        assert client.delete(f"/api/favorites/{item.id}").status_code == 401
+        assert client.get("/api/favorites").status_code == 401
 
 
 class TestAdmin:
@@ -171,12 +178,30 @@ class TestAdmin:
         assert "today_count" in data
         assert "pipeline_running" in data
         assert "last_run" in data
-        assert "sources" in data
+        assert "progress" in data
+        # 安全瘦身：status 不再向公网暴露源列表明细
+        assert "sources" not in data
 
     def test_refresh_returns_started(self, client, monkeypatch):
-        # mock 后台任务，避免实际执行流水线
+        # mock 后台任务，避免实际执行流水线（节流状态由 conftest 的 autouse fixture 重置）
         monkeypatch.setattr("app.api.admin._run_pipeline_sync", lambda *a: None)
         resp = client.post("/api/admin/refresh")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] in ("started", "already_running")
+        assert resp.json()["status"] == "started"
+
+    def test_refresh_cooldown_within_window(self, client, db, monkeypatch):
+        """冷却期内重复触发且当日已有成功记录 → cooldown。"""
+        monkeypatch.setattr("app.api.admin._run_pipeline_sync", lambda *a: None)
+        db.add(PipelineRun(
+            trigger="manual",
+            status="success",
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        ))
+        db.commit()
+
+        first = client.post("/api/admin/refresh")
+        assert first.json()["status"] == "started"
+
+        second = client.post("/api/admin/refresh")
+        assert second.status_code == 200
+        assert second.json()["status"] == "cooldown"

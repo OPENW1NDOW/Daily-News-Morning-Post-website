@@ -1,6 +1,12 @@
 export function NewsSkeleton() {
   return (
     <div className="space-y-10">
+      <div className="flex gap-1.5 overflow-hidden animate-pulse">
+        {["w-14", "w-20", "w-16", "w-20", "w-14", "w-16"].map((w, i) => (
+          <div key={i} className={`h-8 ${w} shrink-0 bg-stone-100 rounded-full`} />
+        ))}
+      </div>
+
       <div className="bg-white border border-stone-200 rounded-3xl p-8 md:p-12 animate-pulse">
         <div className="flex gap-3 mb-6">
           <div className="h-5 w-20 bg-stone-100 rounded-full" />
@@ -19,8 +25,12 @@ export function NewsSkeleton() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="bg-white border border-stone-200 rounded-2xl p-6 animate-pulse">
-              <div className="h-3 w-14 bg-stone-100 rounded mb-3" />
+            <div key={i} className="relative overflow-hidden bg-white border border-stone-200 rounded-2xl p-6 animate-pulse">
+              <span className="absolute left-0 top-0 bottom-0 w-1 bg-stone-200" />
+              <div className="flex items-center gap-1.5 mb-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-stone-200" />
+                <div className="h-3 w-14 bg-stone-100 rounded" />
+              </div>
               <div className="h-5 bg-stone-100 rounded w-5/6 mb-2" />
               <div className="h-5 bg-stone-100 rounded w-3/4 mb-3" />
               <div className="h-3 bg-stone-100 rounded w-full mb-1" />

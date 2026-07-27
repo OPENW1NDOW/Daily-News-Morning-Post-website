@@ -12,6 +12,7 @@ interface Props {
 
 export function CategoryTabs({ categories, active, onChange, onSearch }: Props) {
   const [q, setQ] = useState("")
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [atStart, setAtStart] = useState(true)
   const [atEnd, setAtEnd] = useState(false)
@@ -47,8 +48,14 @@ export function CategoryTabs({ categories, active, onChange, onSearch }: Props) 
     scrollRef.current?.scrollBy({ left: delta, behavior: "smooth" })
   }
 
+  function closeMobileSearch() {
+    setMobileSearchOpen(false)
+    setQ("")
+    onSearch?.("")
+  }
+
   return (
-    <div className="flex items-center gap-3">
+    <div className="relative flex items-center gap-3">
       {/* 左箭头 */}
       <button
         type="button"
@@ -123,7 +130,7 @@ export function CategoryTabs({ categories, active, onChange, onSearch }: Props) 
         </svg>
       </button>
 
-      {/* 搜索框 */}
+      {/* 搜索框（桌面） */}
       <div className="shrink-0 hidden md:flex items-center gap-2 px-3 h-9 bg-white border border-stone-200 rounded-full focus-within:border-stone-400 transition-colors">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#A3A3A3]">
           <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
@@ -138,6 +145,49 @@ export function CategoryTabs({ categories, active, onChange, onSearch }: Props) 
           className="bg-transparent outline-none text-[13px] text-[#0F0F0F] placeholder:text-[#A3A3A3] w-36"
         />
       </div>
+
+      {/* 搜索入口（移动端） */}
+      <button
+        type="button"
+        aria-label="搜索"
+        onClick={() => setMobileSearchOpen(true)}
+        className="shrink-0 md:hidden w-8 h-8 rounded-full border border-stone-200 bg-white text-[#525252] hover:text-[#0F0F0F] hover:border-stone-400 transition-all duration-150 flex items-center justify-center"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+        </svg>
+      </button>
+
+      {/* 移动端全宽搜索层：覆盖 tab 行 */}
+      {mobileSearchOpen && (
+        <div className="absolute inset-0 z-10 md:hidden flex items-center gap-2 bg-[#FAFAF9]">
+          <div className="flex-1 min-w-0 flex items-center gap-2 px-3 h-9 bg-white border border-stone-200 rounded-full focus-within:border-stone-400 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 shrink-0 text-[#A3A3A3]">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+            </svg>
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value)
+                onSearch?.(e.target.value)
+              }}
+              placeholder="搜索…"
+              className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-[#0F0F0F] placeholder:text-[#A3A3A3]"
+            />
+          </div>
+          <button
+            type="button"
+            aria-label="关闭搜索"
+            onClick={closeMobileSearch}
+            className="shrink-0 w-8 h-8 rounded-full border border-stone-200 bg-white text-[#525252] hover:text-[#0F0F0F] hover:border-stone-400 transition-all duration-150 flex items-center justify-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   )
 }

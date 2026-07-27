@@ -30,6 +30,14 @@ export function todayStr(now = new Date()) {
   return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
 }
 
+/** 后端时间统一转 Asia/Shanghai 展示：naive 字符串按 UTC 解释（补 Z），已带时区标记的原样解析 */
+export function formatDateTime(iso: string): string {
+  const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/.test(iso)
+  const d = new Date(hasTimezone ? iso : iso + "Z")
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })
+}
+
 export function yesterdayStr() {
   const [y, m, d] = todayStr().split("-").map(Number)
   const dt = new Date(Date.UTC(y, m - 1, d))

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { api } from "@/lib/api"
 import type { AdminDashboard as DashboardData } from "@/lib/types"
+import { formatDateTime } from "@/lib/utils"
 import { Newspaper, Users, Rss, Activity } from "lucide-react"
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -97,7 +98,7 @@ export default function AdminDashboard() {
               </div>
               <div className="flex justify-between text-[13px]">
                 <span className="text-[#737373]">开始时间</span>
-                <span className="text-[#0F0F0F]">{data.latest_pipeline.started_at ? new Date(data.latest_pipeline.started_at + "Z").toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</span>
+                <span className="text-[#0F0F0F]">{data.latest_pipeline.started_at ? formatDateTime(data.latest_pipeline.started_at) : "-"}</span>
               </div>
               {data.latest_pipeline.result && (
                 <div className="flex justify-between text-[13px]">

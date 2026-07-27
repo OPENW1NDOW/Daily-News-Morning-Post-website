@@ -1,6 +1,3 @@
-/* 中文字体通过 CDN 加载，避免 Turbopack 处理 200+ 子集文件导致编译卡死 */
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap");
-
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -10,10 +7,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), var(--font-noto-sans-sc), ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-serif: var(--font-fraunces), var(--font-noto-serif-sc), ui-serif, Georgia, "Source Han Serif SC", "Noto Serif CJK SC", serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-serif: var(--font-fraunces), "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: var(--font-fraunces), var(--font-noto-serif-sc), ui-serif, Georgia, serif;
+  --font-heading: var(--font-fraunces), "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -53,8 +50,6 @@
 }
 
 :root {
-  --font-noto-sans-sc: "Noto Sans SC", sans-serif;
-  --font-noto-serif-sc: "Noto Serif SC", serif;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -147,5 +142,17 @@
   }
   .scrollbar-none::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    /* 防止 infinite 动画在 0.01ms 周期下高频循环空转 CPU */
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

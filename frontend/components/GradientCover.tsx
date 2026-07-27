@@ -1,15 +1,16 @@
 "use client"
 
-const GRADIENTS: Record<string, { from: string; via: string; to: string; label: string }> = {
-  ai:            { from: "#6366F1", via: "#8B5CF6", to: "#A855F7", label: "AI" },         // 靛紫
-  ai_paper:      { from: "#7C3AED", via: "#9333EA", to: "#C026D3", label: "PAPER" },      // 深紫→品红
-  tech:          { from: "#0EA5E9", via: "#0284C7", to: "#1D4ED8", label: "TECH" },       // 天蓝→钴蓝
-  internet:      { from: "#06B6D4", via: "#0891B2", to: "#0E7490", label: "NET" },        // 青色
-  business:      { from: "#CA8A04", via: "#D97706", to: "#B45309", label: "BIZ" },        // 琥珀金
-  finance:       { from: "#DC2626", via: "#B91C1C", to: "#991B1B", label: "FIN" },        // 正红
-  international: { from: "#0D9488", via: "#059669", to: "#047857", label: "WORLD" },      // 青翠绿
-  social:        { from: "#EC4899", via: "#F472B6", to: "#FB7185", label: "SOCIAL" },     // 粉
-  other:         { from: "#6B7280", via: "#4B5563", to: "#374151", label: "—" },
+// text: 同色相深色（oklch 明度约 0.45），用于浅底胶囊上的文字，保证对比度
+const GRADIENTS: Record<string, { from: string; via: string; to: string; text: string; label: string }> = {
+  ai:            { from: "#6366F1", via: "#8B5CF6", to: "#A855F7", text: "#4338CA", label: "AI" },         // 靛紫
+  ai_paper:      { from: "#7C3AED", via: "#9333EA", to: "#C026D3", text: "#5B21B6", label: "PAPER" },      // 深紫→品红
+  tech:          { from: "#0EA5E9", via: "#0284C7", to: "#1D4ED8", text: "#075985", label: "TECH" },       // 天蓝→钴蓝
+  internet:      { from: "#06B6D4", via: "#0891B2", to: "#0E7490", text: "#155E75", label: "NET" },        // 青色
+  business:      { from: "#CA8A04", via: "#D97706", to: "#B45309", text: "#854D0E", label: "BIZ" },        // 琥珀金
+  finance:       { from: "#DC2626", via: "#B91C1C", to: "#991B1B", text: "#991B1B", label: "FIN" },        // 正红
+  international: { from: "#0D9488", via: "#059669", to: "#047857", text: "#115E59", label: "WORLD" },      // 青翠绿
+  social:        { from: "#EC4899", via: "#F472B6", to: "#FB7185", text: "#9D174D", label: "SOCIAL" },     // 粉
+  other:         { from: "#6B7280", via: "#4B5563", to: "#374151", text: "#4B5563", label: "—" },
 }
 
 interface Props {

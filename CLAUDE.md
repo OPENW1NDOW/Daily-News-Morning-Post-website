@@ -11,7 +11,7 @@ Python 3.11+, Node.js 18+, npm 9+, Docker. Local HTTP proxy needed for overseas 
 ### Backend (from `backend/`)
 ```bash
 uvicorn app.main:app --reload --port 8000   # dev server
-pytest tests/ -v                              # all 31 tests
+pytest tests/ -v                              # full test suite
 pytest tests/test_fetcher.py -v               # single test file
 pytest tests/test_fetcher.py::test_fn -k keyword  # single test or by keyword
 python -m app.scripts.probe_sources [--proxy] # test RSS source reachability
@@ -32,6 +32,7 @@ docker-compose up --build -d            # rebuild and start
 docker-compose down                     # stop all services
 docker logs news-backend -f             # view backend logs
 docker ps                               # check container status
+# 4 containers: backend, frontend, nginx, rsshub (RSSHub proxy for some sources)
 ```
 
 ## Architecture
@@ -43,20 +44,21 @@ fetch_all_sources → filter_by_time → classify_and_score → select_top_per_c
     → extract_full_text → summarize → persist
 ```
 
-- **fetch**: async concurrent RSS, semaphore=10, dedup by source_id+guid
-- **classify**: LLM batch (40 items/batch), assigns category + importance 0-100
+- **fetch**: async concurrent RSS, semaphore=10, dedup by link AND (source_id, guid) — both checks required due to UNIQUE constraint on raw_articles
+- **classify**: LLM batch (60 items/batch, see `_BATCH_SIZE` in `classifier.py`), assigns category + importance 0-100
 - **select**: top 8 per category by importance
 - **extract**: trafilatura for full text, fallback to raw_summary
 - **summarize**: LLM per-article → summary, full_summary, viewpoints, background
 - **persist**: final 6 items per category to `news_items` table
 
-Pipeline runs daily at 08:00 Asia/Shanghai via APScheduler. Manual trigger: `POST /api/admin/refresh`.
+Pipeline runs daily at 08:00 Asia/Shanghai via APScheduler. Manual trigger: `POST /api/admin/refresh`. Pipeline log: `/app/logs/pipeline.log` (inside container).
 
 ### Frontend-Backend Connection
 
 - Dev: Next.js rewrites `/api/*` → `http://127.0.0.1:8000/api/*` (in `next.config.ts`)
 - Production (Docker): Nginx reverse proxy, `/api/*` → `backend:8000`
-- `app/page.tsx` is a client component — auto-triggers pipeline if today's data is empty, polls status every 5s
+- `app/page.tsx` is a server component (exports `dynamic="force-dynamic"`) that renders `HomeContent.tsx` (client component)
+- `HomeContent` auto-triggers pipeline if today's data is empty, polls status every 5s
 
 ### Production Deployment
 
@@ -76,23 +78,23 @@ SQLite (WAL mode), 5 tables: `users`, `sources`, `raw_articles`, `news_items`, `
 - `backend/config/sources.yaml` — 45 RSS sources with `use_proxy` and `enabled` flags
 - `backend/config/categories.yaml` — 8 categories with descriptions. **Must stay in sync** with `CATEGORIES` list in `app/pipeline/classifier.py`
 
-## Multi-Session Workflow (多设备协作)
+## Multi-Session Workflow
 
-用户可能在多台设备上用多个 session 协作开发同一项目。以下规范确保上下文不丢失。
+Users may develop across multiple devices/sessions. These rules prevent context loss.
 
-### Session 开始时
-1. `git pull` 获取最新代码和 SESSION_LOG.md
-2. 读取 `SESSION_LOG.md` 了解其他 session 的最近操作
-3. 检查 `git log --oneline -10` 看最近提交
+### Session Start
+1. `git pull` to get latest code and SESSION_LOG.md
+2. Read `SESSION_LOG.md` for recent activity from other sessions
+3. Check `git log --oneline -10` for recent commits
 
-### 重要任务完成后（强制）
-- **提醒用户推送到 Git**：每完成一个有实际意义的任务（功能开发、bug 修复、配置变更等），主动提醒用户 `git push`
-- 更新 `SESSION_LOG.md`，记录：做了什么、为什么、关键决策、相关文件、遗留问题
-- 提交 SESSION_LOG.md 的更新一起推送
+### After Completing Important Tasks (mandatory)
+- **Remind user to push**: After any meaningful task (feature, bugfix, config change), remind user to `git push`
+- Update `SESSION_LOG.md` with: what was done, why, key decisions, related files, open issues
+- Commit SESSION_LOG.md updates alongside the push
 
-### 判断标准
-- "重要任务" = 任何改变项目行为或结构的工作（新功能、修复、重构、配置变更）
-- 不需要提醒的：纯探索性阅读代码、回答问题、讨论方案（未落地）
+### What Counts as "Important"
+- Anything that changes project behavior or structure (new feature, fix, refactor, config change)
+- NOT: reading code for exploration, answering questions, discussing unimplemented plans
 
 ## Test Pattern
 
@@ -107,5 +109,8 @@ Tests use in-memory SQLite (`StaticPool`) and monkeypatch `start_scheduler`/`sto
 - **No DB migrations**: schema changes require dropping the SQLite file or manual Alembic migration
 - **Docker healthcheck**: use `127.0.0.1` not `localhost` (IPv6 issue)
 - **BuildKit issue**: use `DOCKER_BUILDKIT=0` if BuildKit fails to pull images
-- **JWT secret hardcoded** in `app/api/deps.py` — fine for dev, must change before production exposure
-- **Admin endpoints unprotected**: `/api/admin/refresh` and `/api/admin/status` have no auth — anyone can trigger pipeline
+- **JWT secret** comes from `JWT_SECRET` in `backend/.env` (`settings.jwt_secret`); if unset, a random per-process key is generated — all logins invalidate on restart
+- **Admin endpoints**: `/api/admin/refresh` and `/api/admin/status` stay anonymous (homepage auto-trigger), but refresh has cooldown + anonymous daily limits; other `/api/admin/*` endpoints require admin JWT
+- **Date/timezone**: `new Date().toISOString()` returns UTC. In China (UTC+8), after midnight this returns yesterday's date. All date functions must use local timezone: `getFullYear()`, `getMonth()`, `getDate()`. See `frontend/lib/utils.ts` and `frontend/components/DateSwitcher.tsx`
+- **Next.js static caching**: Pages with `"use client"` are still statically prerendered with `s-maxage=31536000`. For pages that must be dynamic (e.g. homepage with date-dependent data), use a server component wrapper that exports `export const dynamic = "force-dynamic"` and renders the client component
+- **Pipeline partial writes**: The orchestrator commits per-category, so a crash mid-pipeline writes partial data (e.g. "ai" succeeds, then "tech" crashes → only ai data persists). `app/pipeline/llm.py::extract_json` with `expect="dict"` must only return `dict`, never `list`

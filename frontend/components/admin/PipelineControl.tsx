@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import type { PipelineProgress, PipelineRun } from "@/lib/types"
+import { formatDateTime } from "@/lib/utils"
 import { Play, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react"
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -147,7 +148,7 @@ export default function PipelineControl() {
                     const total = r.result ? Object.values(r.result).reduce((a, b) => a + b, 0) : null
                     return (
                       <tr key={r.id} className="border-b border-[#F5F5F4]">
-                        <td className="py-2 text-[#525252]">{r.started_at ? new Date(r.started_at + "Z").toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</td>
+                        <td className="py-2 text-[#525252]">{r.started_at ? formatDateTime(r.started_at) : "-"}</td>
                         <td className="py-2 text-[#525252]">{r.trigger === "manual" ? "手动" : "定时"}</td>
                         <td className="py-2">
                           <span className={`px-2 py-0.5 rounded-full text-[12px] font-medium ${STATUS_MAP[r.status]?.color ?? "text-gray-600 bg-gray-50"}`}>

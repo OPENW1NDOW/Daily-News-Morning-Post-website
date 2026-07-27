@@ -35,6 +35,37 @@ def _setup_db():
     Base.metadata.drop_all(bind=_test_engine)
 
 
+def _reset_module_state():
+    """重置已知的模块级内存状态，消除测试间泄漏。"""
+    from app.api import admin, auth
+    from app.pipeline import orchestrator
+    from app.pipeline.classifier import CATEGORIES
+
+    admin._last_run_result = None
+    admin._last_trigger_ts = 0.0
+    admin._anon_trigger_day = None
+    admin._anon_trigger_count = 0
+    auth._rate_buckets.clear()
+    # 测试中 mock 掉执行体后锁可能滞留，未持有时 release 静默容忍
+    orchestrator.release_pipeline_lock()
+    orchestrator._update_progress(
+        running=False,
+        step="",
+        step_index=0,
+        total_steps=orchestrator.TOTAL_PIPELINE_STEPS,
+        categories_done=0,
+        total_categories=len(CATEGORIES),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _reset_state():
+    """每个测试前后重置节流计数、限流桶、流水线锁与进度。"""
+    _reset_module_state()
+    yield
+    _reset_module_state()
+
+
 @pytest.fixture
 def db():
     """返回一个独立的测试数据库 session。"""
@@ -66,6 +97,23 @@ def client(monkeypatch):
 
 
 # ---------- 测试数据构造辅助 ----------
+
+@pytest.fixture
+def user_headers(db):
+    """普通登录用户的 Bearer 头。
+
+    JWT 密钥读 settings.jwt_secret，为空时 deps 模块加载时生成进程内随机值，
+    同进程内签发/验证一致，测试无需真实配置。
+    """
+    from app.api.deps import hash_password, create_access_token
+    from app.models import User
+
+    user = User(username="tester", password_hash=hash_password("testpass123"))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
 
 @pytest.fixture
 def make_news(db):

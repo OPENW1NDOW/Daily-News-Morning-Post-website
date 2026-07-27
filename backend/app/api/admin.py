@@ -5,7 +5,8 @@ Admin API：流水线控制、数据源管理、新闻管理、用户管理、�
 import asyncio
 import pathlib
 import threading
-from datetime import date, datetime
+import time
+from datetime import date, datetime, timezone
 
 import yaml
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
@@ -20,16 +21,21 @@ from ..schemas import (
     XAccountEnabledUpdate,
 )
 from ..utils.logger import get_logger
-from ..utils.timeutil import business_date
-from .deps import require_admin
+from ..utils.timeutil import CST, business_date
+from .deps import get_current_user, require_admin
 
 router = APIRouter()
 logger = get_logger(__name__)
 
-# ── 全局运行状态（兼容旧端点） ──────────────────────────────
-_pipeline_running = False
-_pipeline_lock = threading.Lock()
+# ── 触发节流状态（内存态，重启即重置；运行互斥统一由 orchestrator 的流水线锁负责） ──
 _last_run_result: dict | None = None
+_last_trigger_ts: float = 0.0
+_anon_trigger_day: date | None = None
+_anon_trigger_count: int = 0
+_throttle_lock = threading.Lock()
+
+_REFRESH_COOLDOWN_SECONDS = 600
+_ANON_DAILY_LIMIT = 5
 
 _CONFIG_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "config"
 
@@ -39,8 +45,8 @@ _CONFIG_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "config"
 # ═══════════════════════════════════════════════════════════
 
 def _run_pipeline_sync(db_factory):
-    global _pipeline_running, _last_run_result
-    from ..pipeline.orchestrator import run_daily
+    global _last_run_result
+    from ..pipeline.orchestrator import run_daily, release_pipeline_lock
     from .. import rsshub
     rsshub.start()
     db = db_factory()
@@ -49,21 +55,65 @@ def _run_pipeline_sync(db_factory):
         _last_run_result = {"status": "done", "counts": counts}
         logger.info(f"手动触发流水线完成：{counts}")
     except Exception as e:
-        _last_run_result = {"status": "error", "error": str(e)}
+        # 原始异常仅写日志，避免向公网回显内部主机名/代理地址等信息
+        _last_run_result = {"status": "error", "error": "流水线执行失败，详情见服务端日志"}
         logger.error(f"手动触发流水线失败: {e}", exc_info=True)
     finally:
-        with _pipeline_lock:
-            _pipeline_running = False
+        release_pipeline_lock()
         db.close()
 
 
+def _has_success_run_today(db: Session) -> bool:
+    """当日（CST 自然日）是否已有成功的流水线运行记录。started_at 以 UTC 存储。"""
+    day_start_cst = datetime.now(CST).replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start_utc = day_start_cst.astimezone(timezone.utc).replace(tzinfo=None)
+    return (
+        db.query(PipelineRun)
+        .filter(PipelineRun.started_at >= day_start_utc, PipelineRun.status == "success")
+        .first()
+        is not None
+    )
+
+
+def _mark_triggered():
+    global _last_trigger_ts
+    with _throttle_lock:
+        _last_trigger_ts = time.time()
+
+
 @router.post("/api/admin/refresh")
-def refresh(background_tasks: BackgroundTasks):
-    global _pipeline_running
-    with _pipeline_lock:
-        if _pipeline_running:
-            return {"status": "already_running", "message": "流水线正在运行中，请勿重复触发"}
-        _pipeline_running = True
+def refresh(
+    background_tasks: BackgroundTasks,
+    user: User | None = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    global _anon_trigger_day, _anon_trigger_count
+    from ..pipeline.orchestrator import get_pipeline_progress, acquire_pipeline_lock
+
+    if get_pipeline_progress()["running"]:
+        return {"status": "already_running", "message": "流水线正在运行中，请勿重复触发"}
+
+    is_admin = user is not None and user.is_admin
+    if not is_admin:
+        with _throttle_lock:
+            in_cooldown = _last_trigger_ts > 0 and time.time() - _last_trigger_ts < _REFRESH_COOLDOWN_SECONDS
+            over_daily_limit = _anon_trigger_day == datetime.now(CST).date() and _anon_trigger_count >= _ANON_DAILY_LIMIT
+        if in_cooldown and _has_success_run_today(db):
+            return {"status": "cooldown", "message": "今日数据已生成且刚触发过，请 10 分钟后再试"}
+        if over_daily_limit:
+            raise HTTPException(429, "今日匿名触发次数已达上限，请联系管理员")
+
+    if not acquire_pipeline_lock():
+        return {"status": "already_running", "message": "流水线正在运行中，请勿重复触发"}
+
+    if not is_admin:
+        with _throttle_lock:
+            today = datetime.now(CST).date()
+            if _anon_trigger_day != today:
+                _anon_trigger_day = today
+                _anon_trigger_count = 0
+            _anon_trigger_count += 1
+    _mark_triggered()
     background_tasks.add_task(_run_pipeline_sync, SessionLocal)
     return {"status": "started", "message": "流水线已在后台启动"}
 
@@ -72,23 +122,14 @@ def refresh(background_tasks: BackgroundTasks):
 def status(db: Session = Depends(get_db)):
     today = business_date()
     today_count = db.query(NewsItem).filter(NewsItem.date == today).count()
-    sources = db.query(Source).all()
-    source_list = [
-        {
-            "key": s.key, "name": s.name, "enabled": s.enabled,
-            "last_status": s.last_status,
-            "last_fetched_at": s.last_fetched_at.isoformat() if s.last_fetched_at else None,
-        }
-        for s in sources
-    ]
     from ..pipeline.orchestrator import get_pipeline_progress
     progress = get_pipeline_progress()
+    running = progress["running"]
     return {
         "today_count": today_count,
-        "pipeline_running": _pipeline_running,
+        "pipeline_running": running,
         "last_run": _last_run_result,
-        "sources": source_list,
-        "progress": progress if _pipeline_running else None,
+        "progress": progress if running else None,
     }
 
 
@@ -165,11 +206,10 @@ def dashboard(user: User = Depends(require_admin), db: Session = Depends(get_db)
 
 @router.post("/api/admin/pipeline/trigger")
 def admin_trigger_pipeline(background_tasks: BackgroundTasks, user: User = Depends(require_admin)):
-    global _pipeline_running
-    with _pipeline_lock:
-        if _pipeline_running:
-            return {"status": "already_running", "message": "流水线正在运行中"}
-        _pipeline_running = True
+    from ..pipeline.orchestrator import acquire_pipeline_lock
+    if not acquire_pipeline_lock():
+        return {"status": "already_running", "message": "流水线正在运行中"}
+    _mark_triggered()
     background_tasks.add_task(_run_pipeline_sync, SessionLocal)
     return {"status": "started", "message": "流水线已在后台启动"}
 
@@ -178,9 +218,10 @@ def admin_trigger_pipeline(background_tasks: BackgroundTasks, user: User = Depen
 def admin_pipeline_status(user: User = Depends(require_admin)):
     from ..pipeline.orchestrator import get_pipeline_progress
     progress = get_pipeline_progress()
+    running = progress["running"]
     return {
-        "pipeline_running": _pipeline_running,
-        "progress": progress if _pipeline_running else None,
+        "pipeline_running": running,
+        "progress": progress if running else None,
         "last_run": _last_run_result,
     }
 
@@ -461,6 +502,12 @@ def update_settings(body: SettingsUpdate, user: User = Depends(require_admin)):
     env_path = pathlib.Path(__file__).resolve().parent.parent.parent / ".env"
     lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
     updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        # 拒绝换行，防止注入额外环境变量行
+        if not isinstance(value, str) or "\r" in value or "\n" in value:
+            raise HTTPException(400, f"{field} 的值无效：不能为空且不能包含换行")
+        if field in ("llm_base_url", "proxy_url") and not value.startswith(("http://", "https://")):
+            raise HTTPException(400, f"{field} 必须以 http:// 或 https:// 开头")
     env_keys = {"llm_api_key": "LLM_API_KEY", "llm_base_url": "LLM_BASE_URL", "llm_model": "LLM_MODEL", "proxy_url": "PROXY_URL"}
     changed_keys = set()
     for field, value in updates.items():

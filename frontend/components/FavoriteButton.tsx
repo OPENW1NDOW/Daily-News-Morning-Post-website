@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { api } from "@/lib/api"
 import { isAuthenticated } from "@/lib/auth"
 
@@ -14,6 +14,7 @@ interface Props {
 
 export function FavoriteButton({ newsItemId, isFavorited, onToggle, size = "md" }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
   const [optimistic, setOptimistic] = useState(isFavorited)
   const [busy, setBusy] = useState(false)
 
@@ -22,7 +23,10 @@ export function FavoriteButton({ newsItemId, isFavorited, onToggle, size = "md" 
   async function toggle(e: React.MouseEvent) {
     e.stopPropagation()
     if (!isAuthenticated()) {
-      router.push("/login")
+      // 事件回调只在客户端执行；用 window.location.search 而非 useSearchParams，
+      // 避免静态页面（如 /favorites）缺 Suspense 边界导致构建失败
+      const next = pathname + window.location.search
+      router.push("/login?next=" + encodeURIComponent(next))
       return
     }
     if (busy) return

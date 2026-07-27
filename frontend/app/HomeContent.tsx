@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { api } from "@/lib/api"
@@ -22,22 +22,29 @@ function formatDateZH(d: string) {
   return `${y} 年 ${Number(m)} 月 ${Number(day)} 日 · ${weekday}`
 }
 
+function isValidDateStr(s: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(`${s}T00:00:00`).getTime())
+}
+
 export function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const [categories, setCategories] = useState<Category[]>([])
   const [itemsByCategory, setItemsByCategory] = useState<Record<string, NewsItem[]>>({})
-  const [selected, setSelected] = useState<NewsItem | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [failedCategories, setFailedCategories] = useState<string[]>([])
   const [newsStatus, setNewsStatus] = useState<"loading" | "ok" | "empty" | "error">("loading")
   const [refreshing, setRefreshing] = useState(false)
+  const [pollError, setPollError] = useState(false)
   const [progress, setProgress] = useState<PipelineProgress | null>(null)
   const [activeTab, setActiveTab] = useState<string>("all")
   const [query, setQuery] = useState("")
   const [user, setUser] = useState<{ id: number; username: string; is_admin?: boolean } | null>(null)
   const autoTriggered = useRef(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const seqRef = useRef(0)
+  const refreshingRef = useRef(false)
+  const pollFailRef = useRef(0)
 
   // 检查登录状态
   useEffect(() => {
@@ -46,41 +53,117 @@ export function HomeContent() {
     }
   }, [])
 
-  const activeDate = searchParams.get("date") ?? todayStr()
+  const rawDate = searchParams.get("date")
+  const activeDate = rawDate && isValidDateStr(rawDate) ? rawDate : todayStr()
 
   function setDate(d: string) {
     const p = new URLSearchParams(searchParams.toString())
     p.set("date", d)
+    p.delete("item")
     router.replace(`/?${p}`, { scroll: false })
   }
 
+  const setRefreshingState = useCallback((v: boolean) => {
+    refreshingRef.current = v
+    setRefreshing(v)
+  }, [])
+
   const loadData = useCallback(async () => {
-    if (!refreshing) setNewsStatus("loading")
+    // 请求序号守卫：快速切换日期时，旧响应不得覆盖新数据
+    const seq = ++seqRef.current
+    if (!refreshingRef.current) setNewsStatus("loading")
     try {
       const cats = await api.getCategories(activeDate)
+      if (seq !== seqRef.current) return
       setCategories(cats)
 
-      const results = await Promise.all(
+      const results = await Promise.allSettled(
         cats.map((c) =>
           api.getNews({ category: c.key, date: activeDate }).then((items) => [c.key, items] as const)
         )
       )
+      if (seq !== seqRef.current) return
+
       const map: Record<string, NewsItem[]> = {}
+      const failed: string[] = []
       let total = 0
-      for (const [key, items] of results) {
-        map[key] = items
-        total += items.length
-      }
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          const [key, items] = r.value
+          map[key] = items
+          total += items.length
+        } else {
+          failed.push(cats[i].key)
+        }
+      })
       setItemsByCategory(map)
-      setNewsStatus(total === 0 ? "empty" : "ok")
+      setFailedCategories(failed)
+      if (cats.length > 0 && failed.length === cats.length) {
+        setNewsStatus("error")
+      } else if (total === 0 && failed.length === 0) {
+        setNewsStatus("empty")
+      } else {
+        setNewsStatus("ok")
+      }
     } catch {
-      setNewsStatus("error")
+      if (seq === seqRef.current) setNewsStatus("error")
     }
-  }, [activeDate, refreshing])
+  }, [activeDate])
+
+  const loadDataRef = useRef(loadData)
+  useEffect(() => {
+    loadDataRef.current = loadData
+  }, [loadData])
 
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const retryCategory = useCallback(async (key: string) => {
+    const seq = seqRef.current
+    try {
+      const items = await api.getNews({ category: key, date: activeDate })
+      if (seq !== seqRef.current) return
+      setItemsByCategory((prev) => ({ ...prev, [key]: items }))
+      setFailedCategories((prev) => prev.filter((k) => k !== key))
+    } catch {
+      // 重试仍失败：维持失败标记，用户可再次重试
+    }
+  }, [activeDate])
+
+  // 详情弹窗：由 URL 的 ?item= 派生，单一事实源
+  const itemParam = searchParams.get("item")
+  const selectedItem = useMemo(() => {
+    if (!itemParam) return null
+    const id = Number(itemParam)
+    if (!Number.isInteger(id)) return null
+    for (const list of Object.values(itemsByCategory)) {
+      const found = list.find((it) => it.id === id)
+      if (found) return found
+    }
+    return null
+  }, [itemParam, itemsByCategory])
+
+  function openItem(item: NewsItem) {
+    const p = new URLSearchParams(searchParams.toString())
+    p.set("item", String(item.id))
+    // push 而非 replace：手机返回键可直接关闭弹窗
+    router.push(`/?${p}`, { scroll: false })
+  }
+
+  const closeItem = useCallback(() => {
+    const p = new URLSearchParams(searchParams.toString())
+    p.delete("item")
+    const qs = p.toString()
+    router.replace(qs ? `/?${qs}` : "/", { scroll: false })
+  }, [router, searchParams])
+
+  // 数据加载完成后，URL 里的 item 找不到对应条目则静默清掉
+  useEffect(() => {
+    if (!itemParam) return
+    if (newsStatus !== "ok" && newsStatus !== "empty") return
+    if (!selectedItem) closeItem()
+  }, [itemParam, newsStatus, selectedItem, closeItem])
 
   // Hero：全天 importance 最高的 1 条（排除 following）
   const { hero, sectionItems } = useMemo(() => {
@@ -116,6 +199,11 @@ export function HomeContent() {
       .filter((x) => x.items.length > 0)
   }, [categories, sectionItems, activeTab, query])
 
+  const visibleFailed = useMemo(
+    () => failedCategories.filter((k) => activeTab === "all" || k === activeTab),
+    [failedCategories, activeTab]
+  )
+
   function handleTabChange(key: string) {
     setActiveTab(key)
     if (key !== "all") {
@@ -127,11 +215,6 @@ export function HomeContent() {
     }
   }
 
-  function openItem(item: NewsItem) {
-    setSelected(item)
-    setDrawerOpen(true)
-  }
-
   function handleFavoriteToggle(id: number, nowFavorited: boolean) {
     setItemsByCategory((prev) => {
       const next: Record<string, NewsItem[]> = {}
@@ -140,30 +223,7 @@ export function HomeContent() {
       }
       return next
     })
-    if (selected?.id === id)
-      setSelected((prev) => (prev ? { ...prev, is_favorited: nowFavorited } : prev))
   }
-
-  // 统一轮询逻辑
-  const startPolling = useCallback(() => {
-    if (pollRef.current) return
-    pollRef.current = setInterval(async () => {
-      try {
-        const st = await api.getStatus()
-        if (st.progress) setProgress(st.progress)
-        if (!st.pipeline_running) {
-          stopPolling()
-          setRefreshing(false)
-          setProgress(null)
-          await loadData()
-        }
-      } catch {
-        stopPolling()
-        setRefreshing(false)
-        setProgress(null)
-      }
-    }, 5000)
-  }, [loadData])
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -172,14 +232,62 @@ export function HomeContent() {
     }
   }, [])
 
+  // 统一轮询逻辑
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return
+    pollFailRef.current = 0
+    pollRef.current = setInterval(async () => {
+      try {
+        const st = await api.getStatus()
+        pollFailRef.current = 0
+        if (st.progress) setProgress(st.progress)
+        if (!st.pipeline_running) {
+          stopPolling()
+          await loadDataRef.current()
+          setRefreshingState(false)
+          setProgress(null)
+        }
+      } catch {
+        // 偶发网络抖动不打断等待，连续 3 次失败才停止
+        pollFailRef.current += 1
+        if (pollFailRef.current >= 3) {
+          stopPolling()
+          setRefreshingState(false)
+          setProgress(null)
+          setPollError(true)
+        }
+      }
+    }, 5000)
+  }, [stopPolling, setRefreshingState])
+
   // 组件卸载时清除轮询
   useEffect(() => {
     return () => stopPolling()
   }, [stopPolling])
 
+  const retryStatus = useCallback(async () => {
+    setPollError(false)
+    setRefreshingState(true)
+    try {
+      const st = await api.getStatus()
+      if (st.pipeline_running) {
+        if (st.progress) setProgress(st.progress)
+        startPolling()
+      } else {
+        await loadDataRef.current()
+        setRefreshingState(false)
+        setProgress(null)
+      }
+    } catch {
+      setRefreshingState(false)
+      setPollError(true)
+    }
+  }, [setRefreshingState, startPolling])
+
   const triggerRefresh = useCallback(async () => {
-    if (refreshing) return
-    setRefreshing(true)
+    if (refreshingRef.current) return
+    setPollError(false)
+    setRefreshingState(true)
     setProgress(null)
     try {
       const res = await api.triggerRefresh()
@@ -189,72 +297,90 @@ export function HomeContent() {
       }
       startPolling()
     } catch {
-      setRefreshing(false)
+      setRefreshingState(false)
       setProgress(null)
     }
-  }, [refreshing, startPolling])
+  }, [setRefreshingState, startPolling])
 
   useEffect(() => {
     if (
       autoTriggered.current ||
       newsStatus !== "empty" ||
       activeDate !== todayStr() ||
-      refreshing
+      refreshing ||
+      pollError
     )
       return
 
     api.getStatus().then((st) => {
       if (st.pipeline_running) {
-        setRefreshing(true)
+        setRefreshingState(true)
         if (st.progress) setProgress(st.progress)
         startPolling()
       } else if (st.today_count === 0) {
         autoTriggered.current = true
         triggerRefresh()
       }
-    })
-  }, [newsStatus, activeDate, refreshing, triggerRefresh, startPolling])
+    }).catch(() => {})
+  }, [newsStatus, activeDate, refreshing, pollError, triggerRefresh, startPolling, setRefreshingState])
+
+  // 进度：步骤基线 + 板块完成度插值，避免长时间停在同一格
+  const progressPct = useMemo(() => {
+    if (!progress || progress.total_steps <= 0) return 0
+    const stepBase = Math.max(0, progress.step_index - 1) / progress.total_steps
+    const catFrac =
+      progress.total_categories > 0
+        ? progress.categories_done / progress.total_categories / progress.total_steps
+        : 0
+    return Math.min(100, Math.round((stepBase + catFrac) * 100))
+  }, [progress])
 
   return (
     <>
       {/* 顶部导航 */}
       <header className="sticky top-0 z-30 bg-[#FAFAF9]/85 backdrop-blur-md border-b border-stone-200/80">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <SamoyedAvatar size={36} className="ring-2 ring-white shadow-sm" />
-            <h1 className="text-[15px] font-bold text-[#0F0F0F] tracking-tight">Cooper 的每日新闻</h1>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-2 md:gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <SamoyedAvatar size={36} className="ring-2 ring-white shadow-sm shrink-0" />
+            <h1 className="hidden sm:block text-[15px] font-bold text-[#0F0F0F] tracking-tight truncate">Cooper 的每日新闻</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <DateSwitcher date={activeDate} onChange={setDate} />
             <Link
               href="/favorites"
+              aria-label="收藏"
               className="text-[13px] text-[#525252] hover:text-[#0F0F0F] transition-colors flex items-center gap-1.5"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
               </svg>
-              收藏
+              <span className="hidden md:inline">收藏</span>
             </Link>
             {user?.is_admin && (
               <Link
                 href="/admin"
+                aria-label="管理"
                 className="text-[13px] text-[#525252] hover:text-[#0F0F0F] transition-colors flex items-center gap-1.5"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                管理
+                <span className="hidden md:inline">管理</span>
               </Link>
             )}
             {user ? (
               <div className="flex items-center gap-2">
-                <span className="text-[13px] text-[#525252]">{user.username}</span>
+                <span className="hidden md:inline text-[13px] text-[#525252]">{user.username}</span>
                 <button
                   onClick={() => { clearToken(); setUser(null); router.refresh() }}
-                  className="text-[13px] text-[#A3A3A3] hover:text-[#0F0F0F]"
+                  aria-label="退出登录"
+                  className="text-[13px] text-[#737373] hover:text-[#0F0F0F] flex items-center gap-1.5"
                 >
-                  退出
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span className="hidden md:inline">退出</span>
                 </button>
               </div>
             ) : (
@@ -267,17 +393,15 @@ export function HomeContent() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-10">
-        {/* 标题区 */}
-        <div className="mb-8 text-center">
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#2563EB]/10 text-[#2563EB] text-[11px] font-semibold tracking-wide uppercase mb-4">
-            Daily Brief
-          </span>
-          <h2 className="font-serif text-[40px] md:text-[52px] font-semibold text-[#0F0F0F] leading-[1.08] tracking-tight mb-3">
-            今日要闻速览
-          </h2>
-          <p className="text-[14px] text-[#525252]">
-            {formatDateZH(activeDate)} · 覆盖 {categories.length} 个板块
-          </p>
+        {/* 报头 masthead */}
+        <div className="mb-8 border-t-2 border-[#0F0F0F] pt-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="font-serif text-xl font-semibold text-[#0F0F0F] tracking-tight">今日要闻速览</h2>
+            <p className="text-sm text-[#737373]">
+              {formatDateZH(activeDate)}
+              {categories.length > 0 ? ` · ${categories.length} 个板块` : ""}
+            </p>
+          </div>
         </div>
 
         {refreshing && (
@@ -291,25 +415,48 @@ export function HomeContent() {
                 <div className="w-56 h-1.5 bg-stone-200 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-[#2563EB] rounded-full transition-all duration-500"
-                    style={{ width: `${Math.round((progress.step_index / progress.total_steps) * 100)}%` }}
+                    style={{ width: `${progressPct}%` }}
                   />
                 </div>
               )}
-              <p className="text-[#A3A3A3] text-xs">这通常需要 1-3 分钟，请稍候</p>
+              <p className="text-[#737373] text-xs">
+                {progress && progress.total_categories > 0 && progress.categories_done > 0
+                  ? `板块进度 ${progress.categories_done}/${progress.total_categories}`
+                  : "这通常需要 1-3 分钟，请稍候"}
+              </p>
             </div>
           </div>
         )}
 
-        {!refreshing && newsStatus === "loading" && <NewsSkeleton />}
-
-        {!refreshing && newsStatus === "error" && (
+        {!refreshing && pollError && (
           <div className="text-center py-24">
-            <p className="text-[#525252] text-sm mb-2">加载失败</p>
-            <p className="text-[#A3A3A3] text-xs">请确认后端已启动（localhost:8000）</p>
+            <p className="text-[#525252] text-sm mb-2">状态获取失败</p>
+            <p className="text-[#737373] text-xs mb-5">网络似乎不太稳定，稍后可以再试一次</p>
+            <button
+              onClick={retryStatus}
+              className="px-5 py-2.5 bg-[#2563EB] text-white text-sm font-medium rounded-full hover:bg-[#1D4ED8] transition-colors"
+            >
+              重试
+            </button>
           </div>
         )}
 
-        {!refreshing && newsStatus === "empty" && (
+        {!refreshing && !pollError && newsStatus === "loading" && <NewsSkeleton />}
+
+        {!refreshing && !pollError && newsStatus === "error" && (
+          <div className="text-center py-24">
+            <p className="text-[#525252] text-sm mb-2">内容加载失败</p>
+            <p className="text-[#737373] text-xs mb-5">网络或服务暂时不可用，请稍后重试</p>
+            <button
+              onClick={() => loadData()}
+              className="px-5 py-2.5 bg-[#2563EB] text-white text-sm font-medium rounded-full hover:bg-[#1D4ED8] transition-colors"
+            >
+              重新加载
+            </button>
+          </div>
+        )}
+
+        {!refreshing && !pollError && newsStatus === "empty" && (
           <div className="text-center py-24">
             {activeDate === todayStr() ? (
               <>
@@ -322,7 +469,7 @@ export function HomeContent() {
                 </button>
               </>
             ) : (
-              <p className="text-[#A3A3A3] text-sm">该日期暂无内容</p>
+              <p className="text-[#737373] text-sm">该日期暂无内容</p>
             )}
           </div>
         )}
@@ -365,9 +512,32 @@ export function HomeContent() {
                   onFavoriteToggle={handleFavoriteToggle}
                 />
               ))}
-              {visibleCategories.length === 0 && (
+
+              {/* 加载失败的板块：局部错误提示 + 单板块重试 */}
+              {visibleFailed.map((key) => {
+                const cat = categories.find((c) => c.key === key)
+                return (
+                  <div
+                    key={key}
+                    id={`cat-${key}`}
+                    className="rounded-xl border border-stone-200 bg-white px-6 py-8 text-center scroll-mt-24"
+                  >
+                    <p className="text-[#525252] text-sm mb-3">
+                      「{cat?.name ?? key}」板块加载失败
+                    </p>
+                    <button
+                      onClick={() => retryCategory(key)}
+                      className="px-4 py-2 text-[13px] font-medium text-[#2563EB] border border-[#2563EB]/30 rounded-full hover:bg-[#2563EB]/5 transition-colors"
+                    >
+                      重试该板块
+                    </button>
+                  </div>
+                )
+              })}
+
+              {visibleCategories.length === 0 && visibleFailed.length === 0 && (
                 <div className="text-center py-16">
-                  <p className="text-[#A3A3A3] text-sm">没有匹配的内容</p>
+                  <p className="text-[#737373] text-sm">没有匹配的内容</p>
                 </div>
               )}
             </div>
@@ -376,9 +546,9 @@ export function HomeContent() {
       </div>
 
       <NewsDrawer
-        item={selected}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        item={selectedItem}
+        open={selectedItem !== null}
+        onClose={closeItem}
         onFavoriteToggle={handleFavoriteToggle}
         categories={categories}
       />

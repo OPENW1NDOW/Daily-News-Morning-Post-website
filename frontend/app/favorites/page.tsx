@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { api } from "@/lib/api"
 import { isAuthenticated, clearToken } from "@/lib/auth"
@@ -12,13 +12,12 @@ import { NewsSkeleton } from "@/components/NewsSkeleton"
 import { SamoyedAvatar } from "@/components/SamoyedAvatar"
 import { gradientFor } from "@/components/GradientCover"
 
-export default function FavoritesPage() {
+function FavoritesContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [items, setItems] = useState<NewsItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [status, setStatus] = useState<"loading" | "ok" | "empty" | "error">("loading")
-  const [selected, setSelected] = useState<NewsItem | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -49,11 +48,41 @@ export default function FavoritesPage() {
 
   useEffect(() => { load(page) }, [page])
 
+  // 详情弹窗：由 URL 的 ?item= 派生，单一事实源
+  const itemParam = searchParams.get("item")
+  const selected = useMemo(() => {
+    if (!itemParam) return null
+    const id = Number(itemParam)
+    if (!Number.isInteger(id)) return null
+    return items.find((it) => it.id === id) ?? null
+  }, [itemParam, items])
+
+  function openItem(item: NewsItem) {
+    const p = new URLSearchParams(searchParams.toString())
+    p.set("item", String(item.id))
+    // push 而非 replace：手机返回键可直接关闭弹窗
+    router.push(`/favorites?${p}`, { scroll: false })
+  }
+
+  const closeItem = useCallback(() => {
+    const p = new URLSearchParams(searchParams.toString())
+    p.delete("item")
+    const qs = p.toString()
+    router.replace(qs ? `/favorites?${qs}` : "/favorites", { scroll: false })
+  }, [router, searchParams])
+
+  // 数据加载完成后，URL 里的 item 找不到对应条目则静默清掉
+  useEffect(() => {
+    if (!itemParam) return
+    if (status !== "ok" && status !== "empty") return
+    if (!selected) closeItem()
+  }, [itemParam, status, selected, closeItem])
+
   function handleFavoriteToggle(id: number, nowFavorited: boolean) {
     if (!nowFavorited) {
       setItems((prev) => prev.filter((it) => it.id !== id))
       setTotal((t) => Math.max(0, t - 1))
-      if (selected?.id === id) setDrawerOpen(false)
+      if (selected?.id === id) closeItem()
     }
   }
 
@@ -79,36 +108,38 @@ export default function FavoritesPage() {
   }, [items, activeFilter, categories])
 
   return (
-    <main className="min-h-screen bg-[#FAFAF9]">
+    <>
       {/* 顶部导航（与首页一致） */}
       <header className="sticky top-0 z-30 bg-[#FAFAF9]/85 backdrop-blur-md border-b border-stone-200/80">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <SamoyedAvatar size={36} className="ring-2 ring-white shadow-sm" />
-            <h1 className="text-[15px] font-bold text-[#0F0F0F] tracking-tight group-hover:opacity-70 transition-opacity">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-2 md:gap-4">
+          <Link href="/" className="flex items-center gap-2.5 group min-w-0">
+            <SamoyedAvatar size={36} className="ring-2 ring-white shadow-sm shrink-0" />
+            <h1 className="hidden sm:block text-[15px] font-bold text-[#0F0F0F] tracking-tight truncate group-hover:opacity-70 transition-opacity">
               Cooper 的每日新闻
             </h1>
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <Link
               href="/"
+              aria-label="返回首页"
               className="text-[13px] text-[#525252] hover:text-[#0F0F0F] transition-colors flex items-center gap-1.5"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              返回首页
+              <span className="hidden md:inline">返回首页</span>
             </Link>
             {user?.is_admin && (
               <Link
                 href="/admin"
+                aria-label="管理"
                 className="text-[13px] text-[#525252] hover:text-[#0F0F0F] transition-colors flex items-center gap-1.5"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                管理
+                <span className="hidden md:inline">管理</span>
               </Link>
             )}
           </div>
@@ -137,8 +168,14 @@ export default function FavoritesPage() {
 
         {status === "error" && (
           <div className="text-center py-24">
-            <p className="text-[#525252] text-sm mb-2">加载失败</p>
-            <p className="text-[#A3A3A3] text-xs">请确认后端已启动（localhost:8000）</p>
+            <p className="text-[#525252] text-sm mb-2">收藏加载失败</p>
+            <p className="text-[#737373] text-xs mb-5">网络或服务暂时不可用，请稍后重试</p>
+            <button
+              onClick={() => load(page)}
+              className="px-5 py-2.5 bg-[#2563EB] text-white text-sm font-medium rounded-full hover:bg-[#1D4ED8] transition-colors"
+            >
+              重新加载
+            </button>
           </div>
         )}
 
@@ -150,13 +187,13 @@ export default function FavoritesPage() {
                 className="ring-4 ring-white shadow-[0_8px_32px_rgba(15,15,15,0.10)]"
               />
               <span className="absolute -top-1 -right-1 inline-flex items-center justify-center w-9 h-9 rounded-full bg-white border border-stone-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-[#A3A3A3]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-[#737373]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
                 </svg>
               </span>
             </div>
             <h3 className="text-[18px] font-bold text-[#0F0F0F] mb-1.5">收藏夹空空的</h3>
-            <p className="text-[#A3A3A3] text-[13px] mb-6">点击卡片右上角的书签，把喜欢的新闻留下来</p>
+            <p className="text-[#737373] text-[13px] mb-6">点击卡片右上角的书签，把喜欢的新闻留下来</p>
             <Link
               href="/"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#2563EB] text-white text-sm font-medium rounded-full hover:bg-[#1D4ED8] transition-colors"
@@ -189,7 +226,7 @@ export default function FavoritesPage() {
                         ].join(" ")}
                       >
                         {opt.name}
-                        <span className={`ml-1.5 text-[11px] ${isActive ? "opacity-70" : "text-[#A3A3A3]"}`}>
+                        <span className={`ml-1.5 text-[11px] ${isActive ? "opacity-70" : "text-[#737373]"}`}>
                           {opt.count}
                         </span>
                       </button>
@@ -215,7 +252,7 @@ export default function FavoritesPage() {
                           {category.name}
                         </h2>
                       </div>
-                      <span className="text-[12px] text-[#A3A3A3] shrink-0">
+                      <span className="text-[12px] text-[#737373] shrink-0">
                         {groupItems.length} 条收藏
                       </span>
                     </div>
@@ -226,7 +263,7 @@ export default function FavoritesPage() {
                           key={item.id}
                           item={item}
                           categories={categories}
-                          onClick={() => { setSelected(item); setDrawerOpen(true) }}
+                          onClick={() => openItem(item)}
                           onFavoriteToggle={handleFavoriteToggle}
                         />
                       ))}
@@ -237,7 +274,7 @@ export default function FavoritesPage() {
 
               {groups.length === 0 && (
                 <div className="text-center py-16">
-                  <p className="text-[#A3A3A3] text-sm">该板块暂无收藏</p>
+                  <p className="text-[#737373] text-sm">该板块暂无收藏</p>
                 </div>
               )}
             </div>
@@ -256,7 +293,7 @@ export default function FavoritesPage() {
                   </svg>
                 </button>
                 <span className="text-[13px] text-[#525252] tabular-nums">
-                  {page} <span className="text-[#A3A3A3]">/ {totalPages}</span>
+                  {page} <span className="text-[#737373]">/ {totalPages}</span>
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -276,10 +313,27 @@ export default function FavoritesPage() {
 
       <NewsDrawer
         item={selected}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        open={selected !== null}
+        onClose={closeItem}
         onFavoriteToggle={handleFavoriteToggle}
       />
+    </>
+  )
+}
+
+export default function FavoritesPage() {
+  return (
+    <main className="min-h-screen bg-[#FAFAF9]">
+      {/* useSearchParams 需要 Suspense 边界，否则生产构建报错 */}
+      <Suspense
+        fallback={
+          <div className="max-w-7xl mx-auto px-6 py-10">
+            <NewsSkeleton />
+          </div>
+        }
+      >
+        <FavoritesContent />
+      </Suspense>
     </main>
   )
 }

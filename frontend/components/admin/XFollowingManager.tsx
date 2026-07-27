@@ -3,15 +3,12 @@
 import { useEffect, useState } from "react"
 import { api } from "@/lib/api"
 import type { XAccount, XFollowingStatus } from "@/lib/types"
+import { formatDateTime } from "@/lib/utils"
 import { RefreshCw, Loader2 } from "lucide-react"
 
 function formatTime(iso: string | null): string {
   if (!iso) return "—"
-  try {
-    return new Date(iso).toLocaleString("zh-CN", { hour12: false })
-  } catch {
-    return iso
-  }
+  return formatDateTime(iso)
 }
 
 export default function XFollowingManager() {

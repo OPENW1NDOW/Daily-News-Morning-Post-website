@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-07-27 — 安全/生产加固 sprint + 居中弹窗（未部署）
+
+### 做了什么
+- Claude Code audit-fix-sprint（7 路并行 + 测试收尾）：前端 UX、后端安全、流水线、部署配置一并落地
+- 前端：新闻详情 sheet→居中 Dialog（桌面居中 / 手机底栏）；`?item=` 深链；HomeContent 竞态/轮询/部分失败；自托管 Noto Serif SC；可访问性与对比度
+- 后端：JWT_SECRET 外置；refresh 冷却+匿名日限额；登录/注册限流；CORS 收紧；llm.py 公共层；调度改 to_thread；CST/UTC 窗口修复；fetcher 14 天去重界
+- 运维：nginx 安全头+限流；compose 日志轮转/rsshub 内存；backup.sh；CI workflow；`.env.production.example`
+- 密钥隔离：`news-website.tar.gz` / `setup_proxy.sh` 移至 `D:/Python_projects/_quarantine_2026-07-26/`
+- 验证：本地 pytest 108 通过；UI 实测弹窗居中/底栏/Esc/返回键/× 关闭均通过
+
+### 关键决策
+- 流水线锁由触发方 acquire、执行体 finally release（调度与手动互斥）
+- Dialog 尺寸类写死基类，规避 Tailwind v4 data-variant 特异性坑
+
+### 相关文件
+- `backend/app/pipeline/llm.py`, `orchestrator.py`, `scheduler.py`, `api/{admin,auth,deps}.py`
+- `frontend/components/ui/dialog.tsx`, `NewsDrawer.tsx`, `HomeContent.tsx`
+- `docker-compose.yml`, `nginx/nginx.conf`, `scripts/backup.sh`, `.github/workflows/ci.yml`
+
+### 遗留
+- 生产尚未部署本批改动；部署时须在服务器 `.env` 写入 `JWT_SECRET`
+- 隔离目录内真实密钥需尽快轮换（LLM Key / 机场订阅）
+- 点「今天」且无数据会自动触发流水线，本地测 UI 请用 `?date=2026-05-16`
+
+---
+
 ## 2026-07-14 — 生产 Following 空：Node20 代理失效
 
 ### 做了什么

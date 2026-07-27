@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { api } from "@/lib/api"
 import type { AdminUser } from "@/lib/types"
+import { formatDateTime } from "@/lib/utils"
 import { Shield, ShieldOff, User as UserIcon } from "lucide-react"
 
 export default function UserManager() {
@@ -19,11 +20,11 @@ export default function UserManager() {
       .finally(() => setLoading(false))
   }, [])
 
-  const toggleAdmin = async (userId: number, currentIsAdmin: boolean) => {
-    if (userId === currentUserId && currentIsAdmin) {
-      alert("不能取消自己的管理员权限")
-      return
-    }
+  const toggleAdmin = async (userId: number, currentIsAdmin: boolean, username: string) => {
+    const message = currentIsAdmin
+      ? `确定取消「${username}」的管理员权限吗？取消后该用户将变为普通用户，无法访问后台。`
+      : `确定将「${username}」设为管理员吗？该用户将获得全部后台管理权限。`
+    if (!confirm(message)) return
     await api.adminToggleAdmin(userId, !currentIsAdmin)
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_admin: !currentIsAdmin } : u))
   }
@@ -77,10 +78,10 @@ export default function UserManager() {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-center text-[#525252]">{u.favorite_count}</td>
-                  <td className="px-4 py-2.5 text-[#737373]">{u.created_at ? new Date(u.created_at + "Z").toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "-"}</td>
+                  <td className="px-4 py-2.5 text-[#737373]">{u.created_at ? formatDateTime(u.created_at) : "-"}</td>
                   <td className="px-4 py-2.5 text-center">
                     <button
-                      onClick={() => toggleAdmin(u.id, u.is_admin)}
+                      onClick={() => toggleAdmin(u.id, u.is_admin, u.username)}
                       disabled={u.id === currentUserId && u.is_admin}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors ${
                         u.is_admin

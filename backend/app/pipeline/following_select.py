@@ -1,14 +1,9 @@
 """LLM 精选 Following 推文：偏好 AI/Agent/LLM，输出 keep/summary/score。"""
 import json
-import re
-from openai import OpenAI
 
 from ..config import settings
-from ..utils.logger import get_logger
+from .llm import chat_json
 
-logger = get_logger(__name__)
-
-_client = None
 _BATCH_SIZE = 40
 
 _SYSTEM_PROMPT = """你是一位资深编辑，负责从 X（Twitter）关注流中精选值得放进个人早报「Following」板块的推文。
@@ -35,93 +30,20 @@ _SYSTEM_PROMPT = """你是一位资深编辑，负责从 X（Twitter）关注流
 """
 
 
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
-    return _client
-
-
-def _extract_json(text: str):
-    """从 LLM 响应中提取 JSON，处理 markdown 代码块、NDJSON 和额外文本。"""
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    m = re.search(r"\[.*\]", text, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group())
-        except json.JSONDecodeError:
-            pass
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip().startswith("{")]
-    if lines:
-        result = []
-        for line in lines:
-            try:
-                result.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        if result:
-            return result
-    return None
-
-
-def _coerce_results_list(parsed) -> list | None:
-    """把 json_object 各种包装形态压成评估结果列表。"""
-    if isinstance(parsed, list):
-        return parsed
-    if not isinstance(parsed, dict):
-        return None
-    # 单条评估对象
-    if "tweet_id" in parsed and ("keep" in parsed or "score" in parsed or "summary" in parsed):
-        return [parsed]
-    # {"items": [...]} / {"results": [...]} 等
-    for v in parsed.values():
-        if isinstance(v, list):
-            return v
-    # {"id1": {...}, "id2": {...}}
-    values = list(parsed.values())
-    if values and all(isinstance(v, dict) for v in values):
-        rows = []
-        for key, val in parsed.items():
-            row = dict(val)
-            row.setdefault("tweet_id", key)
-            rows.append(row)
-        return rows
-    return None
-
-
 def _select_batch(items: list[dict]) -> list[dict]:
-    """对一批推文调用 LLM，返回含 tweet_id/keep/summary/score 的列表。API/解析失败抛异常。"""
+    """对一批推文调用 LLM，返回含 tweet_id/keep/summary/score 的列表。最终失败抛异常。"""
     payload = json.dumps(items, ensure_ascii=False)
-    resp = _get_client().chat.completions.create(
-        model=settings.llm_model,
-        messages=[
+    results = chat_json(
+        [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": payload},
         ],
         temperature=0.1,
-        response_format={"type": "json_object"},
+        expect="list",
+        log_tag="following_select",
     )
-    content = resp.choices[0].message.content
-    parsed = _extract_json(content)
-    if parsed is None:
-        logger.warning(f"无法从 LLM 响应中提取 JSON: {content[:300] if content else ''}")
-        raise RuntimeError("Following select JSON parse failed")
-    results = _coerce_results_list(parsed)
     if results is None:
-        logger.warning(
-            "精选响应格式异常，无法解析为列表: %s",
-            (content[:300] if content else repr(parsed)),
-        )
-        raise RuntimeError("Following select response format invalid")
+        raise RuntimeError("Following select LLM call failed")
     return results
 
 

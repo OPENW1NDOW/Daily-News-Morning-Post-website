@@ -1,7 +1,7 @@
 import asyncio
 import feedparser
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
 
@@ -11,6 +11,8 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 _SEMAPHORE_LIMIT = 10
+_DEDUP_LOOKBACK_DAYS = 14
+_DEDUP_CHUNK = 500
 
 
 @dataclass
@@ -140,17 +142,27 @@ async def fetch_and_save_all_async(db, sources: list) -> dict[str, int]:
     enabled_sources = [s for s in sources if s.enabled]
     source_entries = await fetch_all_sources_async(enabled_sources)
 
-    # 一次性查出所有已有 link 和 (source_id, guid)，避免逐条 DB 查询
-    existing_links = {row[0] for row in db.query(RawArticle.link).all()}
-    existing_guids = {(row[0], row[1]) for row in db.query(RawArticle.source_id, RawArticle.guid).all()}
+    # 去重集合只查最近 14 天（fetched_at 非空、存 UTC 墙钟），避免随全表增长线性变慢
+    dedup_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=_DEDUP_LOOKBACK_DAYS)
+    existing_links = {
+        row[0]
+        for row in db.query(RawArticle.link).filter(RawArticle.fetched_at >= dedup_cutoff).all()
+    }
+    existing_guids = {
+        (row[0], row[1])
+        for row in db.query(RawArticle.source_id, RawArticle.guid)
+        .filter(RawArticle.fetched_at >= dedup_cutoff)
+        .all()
+    }
 
     result = {}
+    pending: list[tuple] = []
     for src in enabled_sources:
         entries = source_entries.get(src.id)
         if entries is None:
             result[src.key] = 0
             continue
-        new_count = 0
+        result[src.key] = 0
         seen_guids = set()
         for e in entries:
             if e.link in existing_links:
@@ -160,16 +172,41 @@ async def fetch_and_save_all_async(db, sources: list) -> dict[str, int]:
                 continue
             seen_guids.add(guid_key)
             existing_links.add(e.link)
-            db.add(RawArticle(
-                source_id=src.id,
-                guid=e.guid,
-                title=e.title,
-                link=e.link,
-                published_at=e.published_at,
-                raw_summary=e.raw_summary,
-            ))
-            new_count += 1
-        result[src.key] = new_count
+            pending.append((src, e))
+
+    # 慢更新源的旧条目可能超出 14 天窗口仍留在 feed 里，窗口漏判会撞 UNIQUE 约束
+    # 使整批提交失败，因此对通过初筛的候选按 link/guid 再精确回查一次（代价与候选数成正比）
+    stale_links: set[str] = set()
+    stale_guids: set[tuple[int, str]] = set()
+    if pending:
+        links = [e.link for _, e in pending]
+        for i in range(0, len(links), _DEDUP_CHUNK):
+            chunk = links[i:i + _DEDUP_CHUNK]
+            stale_links.update(
+                row[0] for row in db.query(RawArticle.link).filter(RawArticle.link.in_(chunk)).all()
+            )
+        guids = list({e.guid for _, e in pending})
+        for i in range(0, len(guids), _DEDUP_CHUNK):
+            chunk = guids[i:i + _DEDUP_CHUNK]
+            stale_guids.update(
+                (row[0], row[1])
+                for row in db.query(RawArticle.source_id, RawArticle.guid)
+                .filter(RawArticle.guid.in_(chunk))
+                .all()
+            )
+
+    for src, e in pending:
+        if e.link in stale_links or (src.id, e.guid) in stale_guids:
+            continue
+        db.add(RawArticle(
+            source_id=src.id,
+            guid=e.guid,
+            title=e.title,
+            link=e.link,
+            published_at=e.published_at,
+            raw_summary=e.raw_summary,
+        ))
+        result[src.key] += 1
 
     db.commit()
     logger.info(f"全部源拉取完成，各源新增：{result}")

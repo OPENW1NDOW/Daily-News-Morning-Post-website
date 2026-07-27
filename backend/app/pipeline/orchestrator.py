@@ -43,16 +43,38 @@ def get_pipeline_progress() -> dict:
         return dict(_pipeline_progress)
 
 
+# ── 流水线互斥锁 ─────────────────────────────────────────────
+# 用法契约（admin API 与调度器共同遵守）：触发方在启动前 acquire_pipeline_lock()，
+# 同步执行体（admin._run_pipeline_sync / scheduler._run_pipeline_sync）finally 里
+# release_pipeline_lock()。锁的持有横跨"触发线程 → 执行线程"，因此运行入口
+# _run_daily_async 内部不再重复 acquire，否则手动路径会被自己持有的锁挡住。
+_pipeline_run_lock = threading.Lock()
+
+
+def acquire_pipeline_lock() -> bool:
+    """非阻塞尝试获取流水线互斥锁；已被持有返回 False。"""
+    return _pipeline_run_lock.acquire(blocking=False)
+
+
+def release_pipeline_lock() -> None:
+    """释放流水线互斥锁；未持有时静默忽略（容忍脚本直调 run_daily 的路径）。"""
+    try:
+        _pipeline_run_lock.release()
+    except RuntimeError:
+        pass
+
+
 def run_daily(db, trigger: str = "scheduler") -> dict:
     """
-    同步入口，供 admin API（在线程池中调用，无运行中的事件循环）使用。
+    同步入口，供 admin API 与调度器（均在线程池中调用，无运行中的事件循环）使用。
     返回每板块最终写入条数的汇总 dict。
     """
     return asyncio.run(_run_daily_async(db, trigger=trigger))
 
 
-async def _run_rss_pipeline(db, target_date, day_start, day_end) -> dict:
-    """RSS 主线 steps 1–7。无候选时返回 {}（不提前结束外层）。"""
+async def _run_rss_pipeline(db, target_date, day_start, day_end) -> tuple[dict, int]:
+    """RSS 主线 steps 1–7。返回 (每板块写入条数, 分类最终失败批次数)。
+    无候选时返回 ({}, 0)（不提前结束外层）。"""
     from ..models import Source, RawArticle
     from .fetcher import fetch_and_save_all_async
     from .classifier import classify_articles
@@ -71,20 +93,26 @@ async def _run_rss_pipeline(db, target_date, day_start, day_end) -> dict:
     # ── Step 2: 过滤当日文章 ──────────────────────────
     _update_progress(step="正在筛选当日文章...", step_index=2)
     logger.info(f"[2/7] 过滤 {target_date} 文章...")
+    # published_at 以 UTC 墙钟存储（SQLite 丢 tzinfo），查询边界须先转 UTC 再去 tzinfo，
+    # 否则 CST 墙钟直接比较会造成 8 小时窗口错位
+    day_start_utc = day_start.astimezone(timezone.utc).replace(tzinfo=None)
+    day_end_utc = day_end.astimezone(timezone.utc).replace(tzinfo=None)
     candidates = db.query(RawArticle).filter(
-        RawArticle.published_at >= day_start,
-        RawArticle.published_at < day_end,
+        RawArticle.published_at >= day_start_utc,
+        RawArticle.published_at < day_end_utc,
     ).all()
     logger.info(f"[2/7] 候选文章：{len(candidates)} 条")
 
     if not candidates:
         logger.warning("无候选文章，RSS 主线结束（仍继续 Following 旁路）")
-        return {}
+        return {}, 0
 
     # ── Step 3: AI 分类 + 重要度 ───────────────────────────
     _update_progress(step="AI 正在分类与评分...", step_index=3)
     logger.info("[3/7] AI 分类与重要度评分...")
-    classify_articles(db, candidates)
+    _, classify_failed_batches = classify_articles(db, candidates)
+    if classify_failed_batches:
+        logger.warning(f"[3/7] 有 {classify_failed_batches} 个分类批次最终失败")
 
     # ── Step 4: 每板块按 importance 取 top-8 ─────────────
     _update_progress(step="正在筛选每个板块的候选...", step_index=4)
@@ -99,19 +127,42 @@ async def _run_rss_pipeline(db, target_date, day_start, day_end) -> dict:
         category_pools[cat] = category_pools[cat][:TOP_PER_CATEGORY]
         logger.info(f"  {cat}: {len(category_pools[cat])} 条候选")
 
-    # ── Step 5: 提取正文 ────────────────────────────────────
+    # ── Step 5: 提取正文（并发） ────────────────────────────
     _update_progress(step="正在提取新闻正文...", step_index=5)
-    logger.info("[5/7] 正文提取...")
+    logger.info("[5/7] 正文提取（并发 3）...")
     all_selected = [art for pool in category_pools.values() for art in pool]
+
+    # 主线程预取 (id, link, use_proxy)，避免子线程触发 SQLAlchemy lazy loading
+    _extract_targets = []
     for art in all_selected:
         if art.full_text:
             continue
         src = db.get(Source, art.source_id)
-        use_proxy = src.use_proxy if src else False
-        text = extract_text(art.link, use_proxy=use_proxy)
-        art.full_text = text or art.raw_summary or art.title
+        _extract_targets.append((art.id, art.link, src.use_proxy if src else False))
+
+    extracted: dict[int, str | None] = {}
+    if _extract_targets:
+        def _extract_one(item):
+            art_id, link, use_proxy = item
+            return art_id, extract_text(link, use_proxy=use_proxy)
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(_extract_one, item) for item in _extract_targets]
+            done = 0
+            for future in as_completed(futures):
+                art_id, text = future.result()
+                extracted[art_id] = text
+                done += 1
+                if done % 5 == 0 or done == len(_extract_targets):
+                    logger.info(f"  正文提取进度：{done}/{len(_extract_targets)}")
+                    _update_progress(step=f"正在提取新闻正文... {done}/{len(_extract_targets)}")
+
+    for art in all_selected:
+        if art.full_text:
+            continue
+        art.full_text = extracted.get(art.id) or art.raw_summary or art.title
     db.commit()
-    logger.info(f"[5/7] 正文提取完成（共 {len(all_selected)} 篇）")
+    logger.info(f"[5/7] 正文提取完成（共 {len(all_selected)} 篇，新提取 {len(_extract_targets)} 篇）")
 
     # ── Step 6: 生成摘要（并发） ────────────────────────────
     _update_progress(step="AI 正在生成摘要...", step_index=6)
@@ -178,7 +229,7 @@ async def _run_rss_pipeline(db, target_date, day_start, day_end) -> dict:
     total = sum(final_counts.values())
     logger.info(f"===== RSS 主线完成：{target_date}，共 {total} 条 =====")
     _update_progress(step=f"RSS 写入完成（{total} 条），准备 Following…")
-    return final_counts
+    return final_counts, classify_failed_batches
 
 
 async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
@@ -191,7 +242,7 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
 
     now_cst = datetime.now(CST)
     target_date = business_date(now_cst)
-    day_start = now_cst - timedelta(hours=24)
+    day_start = now_cst - timedelta(hours=LOOKBACK_HOURS)
     day_end = now_cst
     logger.info(f"===== 流水线开始：{target_date} =====")
     logger.info(f"抓取窗口：{day_start.strftime('%m-%d %H:%M')} ~ {day_end.strftime('%m-%d %H:%M')} CST")
@@ -206,15 +257,19 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
     run_id = run_record.id
     try:
         final_counts = {}
+        classify_failed_batches = 0
         rss_error = None
         try:
-            final_counts = await _run_rss_pipeline(db, target_date, day_start, day_end)
+            final_counts, classify_failed_batches = await _run_rss_pipeline(
+                db, target_date, day_start, day_end
+            )
         except Exception as e:
             rss_error = str(e)[:500]
             logger.exception("RSS pipeline failed")
             db.rollback()
             run_record = db.get(PipelineRun, run_id)
-            assert run_record is not None
+            if run_record is None:
+                raise RuntimeError(f"PipelineRun(id={run_id}) 在回滚后丢失，无法记录运行结果")
 
         _update_progress(
             step="正在抓取 X Following…",
@@ -237,7 +292,8 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
             logger.exception("Following branch failed")
             db.rollback()
             run_record = db.get(PipelineRun, run_id)
-            assert run_record is not None
+            if run_record is None:
+                raise RuntimeError(f"PipelineRun(id={run_id}) 在回滚后丢失，无法记录运行结果")
 
         rss_total = sum(final_counts.values()) if final_counts else 0
         fol_status = following_result.get("status")
@@ -250,7 +306,10 @@ async def _run_daily_async(db, trigger: str = "scheduler") -> dict:
             done_msg = f"完成：RSS {rss_total} 条 + Following {fol_written} 条"
         _update_progress(step=done_msg, step_index=TOTAL_PIPELINE_STEPS)
 
-        run_record.result = {**final_counts, "following": following_result}
+        result_payload = {**final_counts, "following": following_result}
+        if classify_failed_batches:
+            result_payload["classify_failed_batches"] = classify_failed_batches
+        run_record.result = result_payload
         if rss_error:
             run_record.status = "error"
             run_record.error = rss_error
