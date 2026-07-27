@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-07-28 — 生产 HTTPS（openwindow.chat）
+
+### 做了什么
+- nginx：80 强制跳 HTTPS；443 挂证书；HSTS；`server_name openwindow.chat`
+- compose：开放 `443:443`，挂载 `/www/wwwroot/certs` → `/etc/nginx/certs`
+- `.gitignore` 忽略 `certs/`、`*.key`、`*_bundle.crt`、`*.pem`
+- 顺带精简：去掉 conf.d 内 `limit_req_zone`（易与主配置冲突）及部分 compose logging/rsshub 限额
+
+### 遗留
+- 证书只在服务器，不入库；部署后确认 `nginx -t` 与域名解析
+
+---
+
 ## 2026-07-27 — 安全/生产加固 sprint + 居中弹窗（未部署）
 
 ### 做了什么

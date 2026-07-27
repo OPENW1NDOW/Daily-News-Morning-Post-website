@@ -18,6 +18,12 @@ build/
 *.tgz
 setup_proxy.sh
 
+# SSL 证书与私钥（只放服务器，不入库）
+certs/
+*.key
+*_bundle.crt
+*.pem
+
 # 数据库
 backend/data/*.db
 backend/data/*.db-shm

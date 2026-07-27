@@ -29,11 +29,6 @@ services:
           cpus: '0.5'
         reservations:
           memory: 256M
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
     networks:
       - app-network
 
@@ -60,11 +55,6 @@ services:
           cpus: '0.5'
         reservations:
           memory: 256M
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
     depends_on:
       backend:
         condition: service_healthy
@@ -79,25 +69,12 @@ services:
       - NODE_ENV=production
       - CACHE_TYPE=memory
       - REQUEST_TIMEOUT=10000
-      - NODE_OPTIONS=--max-old-space-size=384
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:1200/', r => r.statusCode < 500 ? process.exit(0) : process.exit(1)).on('error', () => process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
     networks:
       - app-network
 
@@ -107,8 +84,10 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /www/wwwroot/certs:/etc/nginx/certs:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/nginx-health"]
       interval: 30s
@@ -120,11 +99,6 @@ services:
         limits:
           memory: 128M
           cpus: '0.25'
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
     depends_on:
       - frontend
       - backend
