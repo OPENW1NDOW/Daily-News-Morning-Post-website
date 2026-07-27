@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-07-28 — 生产部署 787c2bd（加固 + HTTPS）
+
+### 做了什么
+- 服务器 `/opt/news-website`：`4fdb9e1` → `787c2bd`（stash 本地 Dockerfile/compose/nginx 改动后 pull）
+- 生产 `backend/.env` 补写 `JWT_SECRET`（此前缺失）
+- `DOCKER_BUILDKIT=0 docker-compose up -d --build`；nginx force-recreate
+- 前端构建：npmmirror 缺 `@fontsource/noto-serif-sc@5.3.0` → Dockerfile 回退 npmjs.org（`787c2bd`）
+
+### 验证
+- 四容器 healthy；`nginx -t` ok
+- HTTP→HTTPS 301；`https://openwindow.chat/api/health` → `{"ok":true}`；首页 200
+
+### 遗留
+- 隔离目录密钥仍建议轮换；旧登录因新 JWT_SECRET 已全部失效，需重新登录
+
+---
+
 ## 2026-07-28 — 生产 HTTPS（openwindow.chat）
 
 ### 做了什么
