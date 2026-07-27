@@ -2,7 +2,10 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com && npm ci
+# 优先国内镜像；缺包（如 @fontsource/*）时回退官方源
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm ci \
+    || (npm config set registry https://registry.npmjs.org && npm ci)
 
 # Stage 2: Build
 FROM node:20-alpine AS builder
@@ -27,6 +30,6 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1
 
 CMD ["node", "server.js"]
