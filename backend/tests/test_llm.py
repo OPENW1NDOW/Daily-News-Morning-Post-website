@@ -68,6 +68,17 @@ def _rate_limit_error() -> openai.RateLimitError:
 
 
 class TestChatJsonRetry:
+    def test_disables_thinking_for_json_output(self, monkeypatch):
+        client = MagicMock()
+        client.chat.completions.create.return_value = _resp_with_content('{"ok": true}')
+        monkeypatch.setattr(llm, "get_client", lambda: client)
+
+        result = llm.chat_json([{"role": "user", "content": "return json"}])
+
+        assert result == {"ok": True}
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+
     def test_rate_limit_retries_with_exponential_backoff(self, monkeypatch):
         calls = {"n": 0}
 

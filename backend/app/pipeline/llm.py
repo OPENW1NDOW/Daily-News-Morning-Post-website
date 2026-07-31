@@ -114,6 +114,7 @@ def chat_json(
                 max_tokens=max_tokens,
                 timeout=timeout,
                 response_format={"type": "json_object"},
+                extra_body={"thinking": {"type": "disabled"}},
             )
             content = resp.choices[0].message.content or ""
             result = extract_json(content, expect=expect)
