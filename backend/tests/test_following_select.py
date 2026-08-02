@@ -117,8 +117,8 @@ def test_temperature_is_low(monkeypatch):
     assert kwargs["temperature"] == 0.1
 
 
-def test_large_input_uses_small_batches_with_extended_output_budget(monkeypatch):
-    tweets = [_tweet(str(i)) for i in range(11)]
+def test_large_input_uses_batches_of_forty_with_extended_output_budget(monkeypatch):
+    tweets = [_tweet(str(i)) for i in range(41)]
     mock_client = _mock_client(json.dumps({"items": []}))
     _patch_client(monkeypatch, mock_client)
     assert mod.select_tweets(tweets) == []
@@ -128,7 +128,7 @@ def test_large_input_uses_small_batches_with_extended_output_budget(monkeypatch)
         len(json.loads(call.kwargs["messages"][1]["content"]))
         for call in calls
     ]
-    assert batch_sizes == [10, 1]
+    assert batch_sizes == [40, 1]
     assert [call.kwargs["max_tokens"] for call in calls] == [8192, 8192]
 
 

@@ -4,7 +4,7 @@ import json
 from ..config import settings
 from .llm import chat_json
 
-_BATCH_SIZE = 10
+_BATCH_SIZE = 40
 
 _SYSTEM_PROMPT = """你是一位资深编辑，负责从 X（Twitter）关注流中精选值得放进个人早报「Following」板块的推文。
 
