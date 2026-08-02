@@ -4,7 +4,7 @@ import json
 from ..config import settings
 from .llm import chat_json
 
-_BATCH_SIZE = 40
+_BATCH_SIZE = 10
 
 _SYSTEM_PROMPT = """你是一位资深编辑，负责从 X（Twitter）关注流中精选值得放进个人早报「Following」板块的推文。
 
@@ -39,6 +39,7 @@ def _select_batch(items: list[dict]) -> list[dict]:
             {"role": "user", "content": payload},
         ],
         temperature=0.1,
+        max_tokens=8192,
         expect="list",
         log_tag="following_select",
     )

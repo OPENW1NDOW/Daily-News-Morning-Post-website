@@ -55,9 +55,18 @@ class TestExtractJson:
 
 # ---------- chat_json 重试 ----------
 
-def _resp_with_content(content: str):
+def _resp_with_content(
+    content: str,
+    *,
+    finish_reason: str = "stop",
+    completion_tokens: int = 10,
+):
     resp = MagicMock()
-    resp.choices = [MagicMock(message=MagicMock(content=content))]
+    resp.choices = [MagicMock(
+        message=MagicMock(content=content),
+        finish_reason=finish_reason,
+    )]
+    resp.usage = MagicMock(completion_tokens=completion_tokens)
     return resp
 
 
@@ -68,6 +77,26 @@ def _rate_limit_error() -> openai.RateLimitError:
 
 
 class TestChatJsonRetry:
+    def test_logs_completion_metadata(self, monkeypatch, caplog):
+        client = MagicMock()
+        client.chat.completions.create.return_value = _resp_with_content(
+            '{"ok": true}',
+            finish_reason="length",
+            completion_tokens=8192,
+        )
+        monkeypatch.setattr(llm, "get_client", lambda: client)
+
+        result = llm.chat_json(
+            [{"role": "user", "content": "return json"}],
+            max_tokens=8192,
+            log_tag="following_select",
+        )
+
+        assert result == {"ok": True}
+        assert "finish_reason=length" in caplog.text
+        assert "completion_tokens=8192" in caplog.text
+        assert "max_tokens=8192" in caplog.text
+
     def test_disables_thinking_for_json_output(self, monkeypatch):
         client = MagicMock()
         client.chat.completions.create.return_value = _resp_with_content('{"ok": true}')

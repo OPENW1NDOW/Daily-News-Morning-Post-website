@@ -23,7 +23,11 @@ def _mock_client(content: str) -> MagicMock:
     mock_client = MagicMock()
     mock_choice = MagicMock()
     mock_choice.message.content = content
-    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    mock_choice.finish_reason = "stop"
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[mock_choice],
+        usage=MagicMock(completion_tokens=100),
+    )
     return mock_client
 
 
@@ -111,6 +115,21 @@ def test_temperature_is_low(monkeypatch):
 
     kwargs = mock_client.chat.completions.create.call_args.kwargs
     assert kwargs["temperature"] == 0.1
+
+
+def test_large_input_uses_small_batches_with_extended_output_budget(monkeypatch):
+    tweets = [_tweet(str(i)) for i in range(11)]
+    mock_client = _mock_client(json.dumps({"items": []}))
+    _patch_client(monkeypatch, mock_client)
+    assert mod.select_tweets(tweets) == []
+
+    calls = mock_client.chat.completions.create.call_args_list
+    batch_sizes = [
+        len(json.loads(call.kwargs["messages"][1]["content"]))
+        for call in calls
+    ]
+    assert batch_sizes == [10, 1]
+    assert [call.kwargs["max_tokens"] for call in calls] == [8192, 8192]
 
 
 def test_empty_input_returns_empty(monkeypatch):

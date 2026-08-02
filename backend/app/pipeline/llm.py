@@ -116,7 +116,16 @@ def chat_json(
                 response_format={"type": "json_object"},
                 extra_body={"thinking": {"type": "disabled"}},
             )
-            content = resp.choices[0].message.content or ""
+            choice = resp.choices[0]
+            content = choice.message.content or ""
+            finish_reason = getattr(choice, "finish_reason", None)
+            completion_tokens = getattr(getattr(resp, "usage", None), "completion_tokens", None)
+            if log_tag:
+                log_completion = logger.warning if finish_reason == "length" else logger.info
+                log_completion(
+                    f"{tag}LLM completion: finish_reason={finish_reason} "
+                    f"completion_tokens={completion_tokens} max_tokens={max_tokens}"
+                )
             result = extract_json(content, expect=expect)
             if result is None:
                 logger.warning(f"{tag}无法从 LLM 响应中提取 JSON: {content[:200]}")
